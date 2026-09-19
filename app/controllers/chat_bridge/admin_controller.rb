@@ -19,6 +19,7 @@ module ChatBridge
         cors_origins: SiteSetting.cors_origins.to_s.split("|").map(&:strip).reject(&:empty?),
         bridge_enabled: SiteSetting.chat_bridge_enabled,
         chat_enabled: SiteSetting.chat_enabled,
+        channels: available_channels,
       )
     end
 
@@ -135,6 +136,18 @@ module ChatBridge
           %(<script src="#{::Discourse.base_url}/chat-bridge/widget.js" ) +
             %(data-site-key="#{site.site_key}" defer></script>),
       }
+    end
+
+    # Offered so an administrator can pin a site to one channel without having to
+    # look up its id. Only open category channels, because a direct message
+    # channel cannot be chosen in advance and a closed one would strand the site.
+    def available_channels
+      ::Chat::Channel
+        .where(chatable_type: "Category", status: "open")
+        .order(:id)
+        .map { |c| { id: c.id, name: ChatBridge::Presenter.channel_title(c) } }
+    rescue StandardError
+      []
     end
 
     def cors_list

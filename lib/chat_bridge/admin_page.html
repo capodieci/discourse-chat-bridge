@@ -119,6 +119,7 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
       state.sites = data.sites || [];
       state.positions = data.positions || ["bottom-right", "bottom-left"];
       state.widget_url = data.widget_url || "";
+      state.channels = data.channels || [];
       state.bridge_enabled = data.bridge_enabled;
       state.chat_enabled = data.chat_enabled;
       state.loading = false;
@@ -135,6 +136,19 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
     bits.push('<span class="pill">' + state.sites.length + " website" +
               (state.sites.length === 1 ? "" : "s") + "</span>");
     document.getElementById("status").innerHTML = bits.join("");
+  }
+
+  function channelOptions(s) {
+    var pinned = (s.allowed_channel_ids && s.allowed_channel_ids.length === 1)
+      ? String(s.allowed_channel_ids[0])
+      : "";
+    var out = '<option value=""' + (pinned ? "" : " selected") +
+              ">Every channel the visitor can see</option>";
+    (state.channels || []).forEach(function (c) {
+      out += '<option value="' + c.id + '"' + (pinned === String(c.id) ? " selected" : "") +
+             ">Only " + esc(c.name) + "</option>";
+    });
+    return out;
   }
 
   function renderSite(s) {
@@ -165,6 +179,11 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
           '<div><label>Corner</label><select data-f="position">' + opts + "</select></div>" +
           '<div><label>Panel title</label><input type="text" data-f="launcher_label" placeholder="Community chat" value="' +
             esc(s.theme.launcher_label || "") + '"></div>' +
+          '<div><label>Channels</label><select data-f="channel">' + channelOptions(s) + "</select>" +
+            '<div class="hint">Pinning to one channel suits a support widget. Everyone in that ' +
+            "channel sees everyone's messages, and direct messages are turned off for such a " +
+            "site, because a private conversation cannot be restricted to a channel chosen in " +
+            "advance.</div></div>" +
         "</div>" +
         '<div class="checks">' +
           '<label><input type="checkbox" data-f="direct_messages"' +
@@ -204,7 +223,8 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
       origin: v("origin"),
       enabled: c("enabled"),
       theme: { accent: v("accent"), position: v("position"), launcher_label: v("launcher_label") },
-      features: { direct_messages: c("direct_messages"), voice_messages: c("voice_messages") }
+      features: { direct_messages: c("direct_messages"), voice_messages: c("voice_messages") },
+      allowed_channel_ids: v("channel") ? [v("channel")] : []
     };
   }
 
