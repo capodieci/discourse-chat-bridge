@@ -43,39 +43,26 @@ module ChatBridge
     def start
       return render_auth_failure("chat_disabled") if !SiteSetting.chat_bridge_enabled
 
-      site = ChatBridge::Site.find_enabled_by_key(params[:site_key])
+      handshake = ChatBridge::AuthNonce.find_by(nonce: params[:handshake].to_s)
+      return render_auth_failure("unknown_site") if handshake.nil? || !handshake.fresh?
+
+      site = ChatBridge::Site.enabled.find_by(id: handshake.site_id)
       return render_auth_failure("unknown_site") if site.nil?
 
-      # Remember which site and state this attempt belongs to, so the value
-      # survives the round trip through the login screen.
-      if current_user.nil?
-        session[:chat_bridge_site_key] = site.site_key
-        session[:chat_bridge_state] = params[:state].to_s.first(128)
-        return redirect_to_login
-      end
+      # The visitor is not signed in to the forum, so send them to the forum's
+      # own login and come back here afterwards. The handshake id is in the URL,
+      # so nothing needs carrying in the session across that round trip.
+      return redirect_to_login if current_user.nil?
 
-      state = params[:state].presence || session.delete(:chat_bridge_state)
-      session.delete(:chat_bridge_site_key)
+      authorized = ChatBridge::AuthNonce.authorize!(handshake.nonce, current_user.id)
+      return render_auth_failure("invalid_token") if authorized.nil?
 
-      nonce = ChatBridge::AuthNonce.issue!(site: site, state: state)
-      consumed = ChatBridge::AuthNonce.consume!(nonce.nonce)
-      return render_auth_failure("invalid_token") if consumed.nil?
-
-      plain, _record = ChatBridge::Token.issue!(user: current_user, site: site)
-
+      # The widget is already polling and will collect the token itself. This
+      # postMessage is only a shortcut for the case where the opener survived,
+      # which is when the visitor was signed in already and never passed through
+      # the login page. It carries no token: only a nudge to poll immediately.
       @site = site
-      @state = consumed.state
-      @token = plain
-      @expires_in = SiteSetting.chat_bridge_token_ttl_hours.to_i * 3600
-      @can_chat = ::Guardian.new(current_user).can_chat?
-      @user_payload = {
-        id: current_user.id,
-        username: current_user.username,
-        name: current_user.name,
-        avatar_template: current_user.avatar_template,
-        can_chat: @can_chat,
-      }
-
+      @state = authorized.state
       render_handshake_page
     end
 
@@ -100,13 +87,7 @@ module ChatBridge
     # origin, never "*", so the token cannot be read by any other page even if
     # something unexpected opened this window.
     def render_handshake_page
-      payload = {
-        type: "chat-bridge-auth",
-        state: @state,
-        token: @token,
-        expires_in: @expires_in,
-        user: @user_payload,
-      }
+      payload = { type: "chat-bridge-auth", state: @state, authorized: true }
 
       render html: handshake_html(payload, @site.origin, csp_nonce).html_safe,
              content_type: "text/html"

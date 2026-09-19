@@ -47,6 +47,7 @@
     sign_in: "Sign in to chat",
     sign_in_hint: "Use your forum account. A window will open.",
     signing_in: "Signing in",
+    signing_in_hint: "Finish signing in using the window that opened. This panel updates by itself.",
     sign_out: "Sign out",
     popup_blocked: "Your browser blocked the sign in window. Allow popups for this site, then try again.",
     loading: "Loading",
@@ -176,53 +177,122 @@
   /* ----------------------------------------------------------------- auth */
 
   var authWindow = null;
+  var authPoll = null;
 
+  // Signing in does not rely on the popup being able to talk back.
+  //
+  // Discourse's own /login page carries Cross-Origin-Opener-Policy:
+  // same-origin-allow-popups, which severs window.opener when the opener is a
+  // different origin, permanently. Any visitor not already signed in to the
+  // forum passes through that page, so postMessage fails for the common case and
+  // the popup would sit there claiming success while nothing happened.
+  //
+  // Instead the widget starts a handshake, keeps a secret that never enters a
+  // URL, opens the popup with only an id, and then asks the bridge for the
+  // result. postMessage is kept purely as a shortcut to poll immediately rather
+  // than waiting for the next tick.
   function signIn() {
+    if (state.signingIn) return;
+
+    state.signingIn = true;
+    state.error = null;
+    render();
+
     var nonce = String(Math.random()).slice(2) + String(Date.now());
-    var url =
-      BRIDGE +
-      "/chat-bridge/auth/start?site_key=" +
-      encodeURIComponent(SITE_KEY) +
-      "&state=" +
-      encodeURIComponent(nonce);
 
-    var w = 460;
-    var h = 640;
-    var left = window.screenX + (window.outerWidth - w) / 2;
-    var top = window.screenY + (window.outerHeight - h) / 2;
+    api("/auth/begin", { state: nonce })
+      .then(function (data) {
+        var w = 460;
+        var h = 640;
+        var left = window.screenX + (window.outerWidth - w) / 2;
+        var top = window.screenY + (window.outerHeight - h) / 2;
 
-    authWindow = window.open(
-      url,
-      "discourse-chat-bridge-login",
-      "width=" + w + ",height=" + h + ",left=" + left + ",top=" + top
-    );
+        authWindow = window.open(
+          data.auth_url,
+          "discourse-chat-bridge-login",
+          "width=" + w + ",height=" + h + ",left=" + left + ",top=" + top
+        );
 
-    if (!authWindow) {
-      state.error = t("popup_blocked");
+        if (!authWindow) {
+          state.signingIn = false;
+          state.error = t("popup_blocked");
+          render();
+          return;
+        }
+
+        var onMessage = function (event) {
+          if (event.origin !== BRIDGE) return;
+          var d = event.data;
+          if (!d || d.type !== "chat-bridge-auth" || d.state !== nonce) return;
+          window.removeEventListener("message", onMessage);
+          pollClaim(data, 0, true);
+        };
+        window.addEventListener("message", onMessage);
+
+        pollClaim(data, 0, false);
+      })
+      .catch(function (err) {
+        state.signingIn = false;
+        state.error = errorMessage(err.code);
+        render();
+      });
+  }
+
+  function pollClaim(handshake, attempt, immediate) {
+    clearTimeout(authPoll);
+
+    var limit = Math.ceil((handshake.expires_in || 300) / 1.5);
+    if (attempt > limit) {
+      state.signingIn = false;
+      state.error = t("error_generic");
       render();
       return;
     }
 
-    // The handshake page posts the token back. The listener checks the origin
-    // because postMessage delivers to anyone who listens.
-    var onMessage = function (event) {
-      if (event.origin !== BRIDGE) return;
-      var data = event.data;
-      if (!data || data.type !== "chat-bridge-auth") return;
-      if (data.state !== nonce) return;
+    var run = function () {
+      api("/auth/claim", {
+        handshake_id: handshake.handshake_id,
+        claim_secret: handshake.claim_secret
+      })
+        .then(function (data) {
+          if (data.status === "pending") {
+            pollClaim(handshake, attempt + 1, false);
+            return;
+          }
 
-      window.removeEventListener("message", onMessage);
-      saveToken(data.token);
-      state.user = data.user;
-      state.error = null;
-      loadSession();
+          state.signingIn = false;
+          saveToken(data.token);
+          state.user = data.user;
+          state.error = null;
+          try {
+            if (authWindow && !authWindow.closed) authWindow.close();
+          } catch (e) {
+            /* the popup may be in another context group, which is the whole
+               reason this polling exists. Nothing to do. */
+          }
+          loadSession();
+        })
+        .catch(function (err) {
+          // A rejected claim is terminal: the handshake expired, or was already
+          // used. Anything else is transient and worth another try.
+          if (err.code === "invalid_token" || err.code === "origin_mismatch") {
+            state.signingIn = false;
+            state.error = errorMessage(err.code);
+            render();
+            return;
+          }
+          pollClaim(handshake, attempt + 1, false);
+        });
     };
 
-    window.addEventListener("message", onMessage);
+    if (immediate) run();
+    else authPoll = setTimeout(run, 1500);
   }
 
   function signOut() {
     var done = function () {
+      clearTimeout(authPoll);
+      state.signingIn = false;
       saveToken(null);
       state.user = null;
       state.channels = [];
@@ -615,6 +685,12 @@
 
   function renderBody() {
     if (!state.token) {
+      if (state.signingIn) {
+        return (
+          '<div class="note"><h3>' + esc(t("signing_in")) + "</h3><p>" +
+          esc(t("signing_in_hint")) + "</p></div>"
+        );
+      }
       return (
         '<div class="note"><h3>' + esc(t("sign_in")) + "</h3><p>" + esc(t("sign_in_hint")) + "</p>" +
         '<p><button class="btn" data-act="signin">' + esc(t("sign_in")) + "</button></p></div>"

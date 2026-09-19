@@ -126,6 +126,14 @@ module ChatBridge
       channel
     end
 
+    # For endpoints that run before anyone is authenticated, so there is no user
+    # to attribute the limit to. Keyed by address instead.
+    def rate_limit_anonymous!(key, max, period)
+      RateLimiter.new(nil, "chat_bridge_#{key}_#{request.ip}", max, period).performed!
+    rescue RateLimiter::LimitExceeded
+      render_bridge_error("rate_limited", 429)
+    end
+
     def rate_limit_bridge!(key, max, period)
       RateLimiter.new(bridge_user, "chat_bridge_#{key}", max, period).performed!
     rescue RateLimiter::LimitExceeded
