@@ -337,7 +337,7 @@
           return;
         }
         transport.start(null);
-        return loadChannels();
+        return loadChannels(true);
       })
       .catch(function (err) {
         state.loading = false;
@@ -346,7 +346,10 @@
       });
   }
 
-  function loadChannels() {
+  // autoOpen is only true on first load, where dropping the visitor straight
+  // into a conversation is helpful. After an explicit Back it must be false, or
+  // the list re-opens the first channel and the visitor can never reach it.
+  function loadChannels(autoOpen) {
     return api("/channels/list")
       .then(function (data) {
         state.channels = data.channels || [];
@@ -354,7 +357,7 @@
           return sum + (c.unread_count || 0);
         }, 0);
 
-        if (!state.activeChannelId && state.channels.length) {
+        if (autoOpen && !state.activeChannelId && state.channels.length) {
           return openChannel(state.channels[0].id);
         }
         render();
@@ -983,7 +986,7 @@
       state.searchTerm = "";
       state.searchResults = [];
       transport.start(null);
-      loadChannels();
+      loadChannels(false);
     } else if (act === "newdm") {
       state.view = "search";
       state.searchTerm = "";
