@@ -6,17 +6,22 @@
 - Architecture settled: a Discourse plugin, not an external bridge. See `docs/decisions.md` record 0002.
 - Domain model written for the chosen architecture. See `docs/domain-model.md`. Three tables instead of the twelve the brief anticipated.
 
-## Next: Phase 1
+- RAM resized to 4 GB and disk grown by 20 GB. Verified: 1.8 GB available, swap back to zero, 60 G free, forum returning HTTP 200. Recorded in `docs/server-changes.md`.
+- Phase 1 code written. Repository restructured to the Discourse plugin convention, with `plugin.rb` at the root so the repo can be cloned directly by `app.yml`. Fourteen Ruby files, all syntax checked against the container's own Ruby interpreter.
 
-Write the plugin skeleton, then install it. In this order, because the rebuild that installs it should happen once, with everything it needs already in place.
+## Next: install the plugin
 
-1. Plugin skeleton: `plugin.rb`, migrations for the three tables, the auth endpoints, a health endpoint. No widget yet.
-2. Push to GitHub so `app.yml` can reference it.
-3. One rebuild, which does two things at once: installs the plugin, and sets `DISCOURSE_ENABLE_CORS: true`. Preceded by a backup, an `app.yml` copy, and a disk and RAM check, per the safety rules.
-4. Set `cors_origins` to the target sites in the admin UI. No downtime.
+Waiting on Rob's explicit approval for the rebuild, per safety rule 2. The exact plan:
+
+1. Take a Discourse backup and confirm the file exists on disk.
+2. Copy `app.yml` to a timestamped backup beside it.
+3. Add the plugin clone hook and `DISCOURSE_ENABLE_CORS: true` to `app.yml`.
+4. `./launcher rebuild app`, once. This is the only forum downtime in the project.
 5. Verify the forum is exactly as before: homepage, login, chat, live updates, uploads.
+6. Turn on `chat_bridge_enabled`, set `cors_origins`, register the first site with `rake chat_bridge:site:add`.
+7. Confirm `GET /chat-bridge/health` answers.
 
-Prerequisite: the RAM resize to 4 GB should happen first. A rebuild with 44 plugins on 2 GB of RAM, while the forum is live, is the riskiest operation in this project.
+Rollback if anything goes wrong: restore the timestamped `app.yml` and rebuild again. The plugin adds three new tables and touches no existing ones, so removing it cannot damage forum data.
 
 ## Decided
 
@@ -28,9 +33,9 @@ Prerequisite: the RAM resize to 4 GB should happen first. A rebuild with 44 plug
 
 ## Open questions for Rob
 
-1. When would you like to do the RAM resize, and do you want me to take a Discourse backup immediately before it?
-2. The rebuild in step 3 is the only forum downtime in the whole project. Is there a time of day that is quietest for your users?
+1. Approval for the rebuild command itself, which safety rule 2 requires to be explicit and specific.
 
 ## Not yet started
 
-- Phases 2 through 6.
+- Phase 2, the widget itself: login, one public channel, history, send, receive.
+- Phases 3 through 6.

@@ -1,0 +1,14 @@
+en:
+  site_settings:
+    chat_bridge_enabled: "Allow approved external websites to embed Discourse chat through the chat bridge."
+    chat_bridge_token_ttl_hours: "How many hours a widget session token stays valid before the visitor must sign in again."
+    chat_bridge_nonce_ttl_seconds: "How many seconds a login handshake value stays valid. Short is safer."
+  chat_bridge:
+    errors:
+      unknown_site: "This website is not registered to embed chat."
+      site_disabled: "Chat embedding is disabled for this website."
+      invalid_token: "Your chat session has expired. Please sign in again."
+      origin_mismatch: "This chat session was issued to a different website."
+      chat_disabled: "Chat is not enabled on this forum."
+      not_allowed: "Your forum account is not permitted to use chat yet."
+      rate_limited: "Too many requests. Please wait a moment."
