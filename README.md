@@ -89,6 +89,17 @@ rake chat_bridge:prune                      # delete expired tokens and old nonc
 
 MIT. See `LICENSE`.
 
+## Checking an install
+
+Two scripts, both read only, both safe against production.
+
+`tests/loadcheck.rb` is the pre-flight. It confirms every constant the plugin depends on resolves, every route points at an action that exists, and every error code has a translation. Worth running after any Discourse upgrade: this plugin calls chat service objects and guardian methods that are not public API, so an upgrade can move them, and this reports that in seconds rather than at the first request.
+
+```sh
+docker exec app rails runner \
+  /var/www/discourse/plugins/discourse-chat-bridge/tests/loadcheck.rb
+```
+
 ## Running the self checks
 
 ```sh

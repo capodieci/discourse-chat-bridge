@@ -46,10 +46,20 @@ Done, written and verified against real forum data, but not yet deployed:
 
 **All 39 checks pass against the live forum**, run without modifying the deployed plugin. Verified afterwards that the database was unchanged: three sites, zero tokens, zero nonces.
 
-Phase 2 is code complete. Still to do:
+- **`tests/loadcheck.rb`.** A pre-flight that catches what a syntax check cannot: unresolvable constants, a route pointing at a missing action, an error code with no translation, Discourse internals moved by an upgrade. Run against a fresh clone of the repository before deploying: **clean**, all 9 routes map to real actions, all 11 constants resolve, all 7 error codes have translations.
 
-1. Deploy and find out whether the widget renders. Nothing in the browser has ever run.
-2. Optional, needs a decision: capability scoped MessageBus channels to restore instant delivery. See record 0006.
+Phase 2 is code complete and every check that can be run without deploying has been run and passes.
+
+## The one thing that cannot be checked from here
+
+The widget has never run in a browser. Every line of Ruby is verified against the live forum; not one line of JavaScript has executed anywhere. Deploying is `git pull` in the container plus a Rails restart, roughly ten seconds, no rebuild. Rollback is `git checkout` of the previous commit and another restart.
+
+Until that happens, treat all of Phase 2 as written but unproven.
+
+## Open, needs a decision from Rob
+
+1. Deploy Phase 2 and drive the demo page against it.
+2. Capability scoped MessageBus channels, to restore instant delivery without handing embedding sites a session equivalent credential. See `docs/decisions.md` record 0006.
 
 None of the Phase 2 work is **deployed**. The plugin running on the forum is still the Phase 1 version. Deploying is a `git pull` in the container plus a Rails restart, roughly ten seconds of interruption rather than a rebuild, and it needs approval.
 
