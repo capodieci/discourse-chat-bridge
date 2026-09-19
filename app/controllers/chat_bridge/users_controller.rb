@@ -66,7 +66,7 @@ module ChatBridge
       end
 
       channel = result.channel
-      render_bridge_ok(channel: ChatBridge::Presenter.channel(channel))
+      render_bridge_ok(channel: ChatBridge::Presenter.channel(channel, viewer: bridge_user))
     end
 
     private

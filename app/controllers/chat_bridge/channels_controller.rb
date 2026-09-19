@@ -26,6 +26,7 @@ module ChatBridge
               c,
               membership: memberships[c.id],
               tracking: tracking[c.id],
+              viewer: bridge_user,
             )
           end
 

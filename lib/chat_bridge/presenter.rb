@@ -36,10 +36,10 @@ module ChatBridge
     # which is where Discourse actually keeps unread counts. They are not on the
     # membership record: that holds last_read_message_id, and the count is
     # derived from it elsewhere.
-    def channel(record, membership: nil, tracking: nil)
+    def channel(record, membership: nil, tracking: nil, viewer: nil)
       {
         id: record.id,
-        title: channel_title(record),
+        title: channel_title(record, viewer: viewer),
         slug: record.slug,
         kind: record.direct_message_channel? ? "dm" : "category",
         status: record.status,
@@ -57,15 +57,25 @@ module ChatBridge
       (tracking[key] || tracking[key.to_s] || 0).to_i
     end
 
-    # A direct message channel has no name of its own, so Discourse builds a
-    # title from its participants. Asking the channel for a title with no user in
-    # scope gives a blank or a generic label, which is why the guardian's user is
-    # passed through.
-    def channel_title(record)
+    # A direct message channel has no name of its own, so it is titled by who is
+    # in it. The viewer is left out: a conversation labelled with your own name
+    # alongside the other person's reads as though you are talking to yourself,
+    # and in a list of several DMs the repeated name is pure noise.
+    def channel_title(record, viewer: nil)
       return record.name if record.name.present?
+
       if record.direct_message_channel?
-        return record.chatable&.users&.map(&:username)&.join(", ").presence || "Direct message"
+        names =
+          Array(record.chatable&.users)
+            .reject { |u| viewer && u.id == viewer.id }
+            .map(&:username)
+
+        # A note to self is a real thing in Discourse chat, so falling back to
+        # the viewer's own name is correct rather than a bug.
+        names = Array(record.chatable&.users).map(&:username) if names.empty?
+        return names.join(", ").presence || "Direct message"
       end
+
       record.chatable&.name.presence || "Channel"
     end
 
