@@ -220,26 +220,54 @@ ActiveRecord::Base.transaction do
     C.eq(r3.site_id == site.id && r3.site_id != other.id, true)
   end
 
-  # ------------------------------------------------------------- nonces
+  # ---------------------------------------------------------- login handshake
+  #
+  # The popup cannot always reach the window that opened it, so the widget
+  # collects its token by asking. These check that asking is safe.
 
-  n = ChatBridge::AuthNonce.issue!(site: site, state: "abc")
+  record, secret = ChatBridge::AuthNonce.begin!(site: site, state: "abc")
 
-  C.check("a fresh nonce can be consumed once") do
-    C.eq(ChatBridge::AuthNonce.consume!(n.nonce)&.state, "abc")
+  C.check("a handshake starts unauthorised, so claiming it early gets nothing") do
+    C.eq(ChatBridge::AuthNonce.claim!(record.nonce, secret), :pending)
   end
 
-  C.check("the same nonce cannot be consumed twice") do
-    C.eq(ChatBridge::AuthNonce.consume!(n.nonce), nil)
+  C.check("the claim secret is stored only as a hash") do
+    C.eq(ChatBridge::AuthNonce.where(claim_secret_hash: secret).exists?, false)
   end
 
-  C.check("an unknown nonce is refused") do
-    C.eq(ChatBridge::AuthNonce.consume!("nope"), nil)
+  C.check("a wrong secret is refused even once authorised") do
+    ChatBridge::AuthNonce.authorize!(record.nonce, user.id)
+    C.eq(ChatBridge::AuthNonce.claim!(record.nonce, "wrong-secret"), nil)
   end
 
-  C.check("an expired nonce is refused") do
-    old = ChatBridge::AuthNonce.issue!(site: site, state: "s")
+  C.check("the right secret claims it once authorised") do
+    C.eq(ChatBridge::AuthNonce.claim!(record.nonce, secret)&.user_id, user.id)
+  end
+
+  C.check("the same handshake cannot be claimed twice") do
+    C.eq(ChatBridge::AuthNonce.claim!(record.nonce, secret), nil)
+  end
+
+  C.check("an unknown handshake id is refused") do
+    C.eq(ChatBridge::AuthNonce.claim!("nope", secret), nil)
+  end
+
+  C.check("an expired handshake is refused") do
+    old, old_secret = ChatBridge::AuthNonce.begin!(site: site, state: "s")
+    ChatBridge::AuthNonce.authorize!(old.nonce, user.id)
     old.update_column(:created_at, 1.hour.ago)
-    C.eq(ChatBridge::AuthNonce.consume!(old.nonce), nil)
+    C.eq(ChatBridge::AuthNonce.claim!(old.nonce, old_secret), nil)
+  end
+
+  C.check("an expired handshake cannot even be authorised") do
+    old, _ = ChatBridge::AuthNonce.begin!(site: site, state: "s")
+    old.update_column(:created_at, 1.hour.ago)
+    C.eq(ChatBridge::AuthNonce.authorize!(old.nonce, user.id), nil)
+  end
+
+  C.check("a handshake records which site it belongs to") do
+    r2, _ = ChatBridge::AuthNonce.begin!(site: other, state: "x")
+    C.eq(r2.site_id, other.id)
   end
 
   raise ActiveRecord::Rollback
