@@ -3,7 +3,7 @@
 Put your Discourse chat on any website. One script tag, and visitors sign in with their existing forum account and talk to the whole community in real time.
 
 ```html
-<script src="https://forum.example.com/plugins/discourse-chat-bridge/widget.js"
+<script src="https://forum.example.com/chat-bridge/widget.js"
         data-site-key="your-site-key" defer></script>
 ```
 

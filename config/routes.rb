@@ -8,6 +8,12 @@ ChatBridge::Engine.routes.draw do
   # Monitoring endpoint. Effectively static, so GET is appropriate.
   get "/health" => "health#show"
 
+  # The widget itself. Served here rather than from the plugin's public
+  # directory, because Discourse serves that with a one year immutable cache
+  # policy, which behind a CDN means a released fix reaches nobody.
+  get "/widget.js" => "asset#widget"
+  get "/widget.strings.en.json" => "asset#strings"
+
   # Everything else is JSON in by POST, JSON out, per project convention.
   # OPTIONS is matched so cross origin preflight requests get a real answer.
   match "/api/auth/begin" => "handshake#begin_handshake", :via => %i[post options]

@@ -11,7 +11,15 @@ enabled_site_setting :chat_bridge_enabled
 
 module ::ChatBridge
   PLUGIN_NAME = "discourse-chat-bridge"
+
+  # Where this plugin was installed. Used to read public/widget.js at request
+  # time rather than hardcoding a path that differs between installs.
+  def self.plugin_root
+    @plugin_root ||= File.expand_path("..", __dir__ + "/plugin.rb")
+  end
 end
+
+ChatBridge.instance_variable_set(:@plugin_root, File.expand_path(__dir__))
 
 require_relative "lib/chat_bridge/engine"
 require_relative "lib/chat_bridge/sanitizer"

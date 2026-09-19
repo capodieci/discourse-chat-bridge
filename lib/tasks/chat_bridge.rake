@@ -88,7 +88,7 @@ if !defined?(CHAT_BRIDGE_RAKE_TASKS_DEFINED)
     puts
     puts "Add this to that website, once, before the closing body tag:"
     puts
-    puts %(  <script src="#{Discourse.base_url}/plugins/discourse-chat-bridge/widget.js")
+    puts %(  <script src="#{Discourse.base_url}/chat-bridge/widget.js")
     puts %(          data-site-key="#{site.site_key}" defer></script>)
   end
 
