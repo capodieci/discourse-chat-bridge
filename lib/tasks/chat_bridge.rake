@@ -18,6 +18,24 @@
 if !defined?(CHAT_BRIDGE_RAKE_TASKS_DEFINED)
   CHAT_BRIDGE_RAKE_TASKS_DEFINED = true
 
+  # Discourse's cors_origins site setting is a pipe separated list. Registering a
+  # site is meaningless unless its origin is in that list, because the browser
+  # refuses the connection before the plugin is ever reached. Keeping the two in
+  # step here removes a manual step that fails silently when forgotten.
+  def chat_bridge_cors_add(origin)
+    current = SiteSetting.cors_origins.to_s.split("|").map(&:strip).reject(&:empty?)
+    return false if current.include?(origin)
+    SiteSetting.cors_origins = (current + [origin]).join("|")
+    true
+  end
+
+  def chat_bridge_cors_remove(origin)
+    current = SiteSetting.cors_origins.to_s.split("|").map(&:strip).reject(&:empty?)
+    return false if !current.include?(origin)
+    SiteSetting.cors_origins = (current - [origin]).join("|")
+    true
+  end
+
   desc "List every website registered to embed the chat widget"
   task "chat_bridge:site:list" => :environment do
     sites = ChatBridge::Site.order(:id)
@@ -58,15 +76,20 @@ if !defined?(CHAT_BRIDGE_RAKE_TASKS_DEFINED)
       abort "Could not add the site:\n  #{site.errors.full_messages.join("\n  ")}"
     end
 
+    added = chat_bridge_cors_add(site.origin)
+
     puts "Added #{site.name} (#{site.origin})"
+    puts
+    if added
+      puts "cors_origins updated to: #{SiteSetting.cors_origins}"
+    else
+      puts "cors_origins already contained #{site.origin}, left alone."
+    end
     puts
     puts "Add this to that website, once, before the closing body tag:"
     puts
     puts %(  <script src="#{Discourse.base_url}/plugins/discourse-chat-bridge/widget.js")
     puts %(          data-site-key="#{site.site_key}" defer></script>)
-    puts
-    puts "Then add #{site.origin} to the cors_origins site setting, or the browser will"
-    puts "refuse the connection. Admin, Settings, search for cors_origins."
   end
 
   desc "Disable a registered website: rake chat_bridge:site:disable[site_key]"
@@ -77,8 +100,14 @@ if !defined?(CHAT_BRIDGE_RAKE_TASKS_DEFINED)
     site.update!(enabled: false)
     revoked = ChatBridge::Token.where(site_id: site.id, revoked_at: nil).update_all(revoked_at: Time.zone.now)
 
+    removed = chat_bridge_cors_remove(site.origin)
+
     puts "Disabled #{site.name} (#{site.origin}) and revoked #{revoked} active session(s)."
-    puts "Remember to remove #{site.origin} from the cors_origins site setting as well."
+    if removed
+      puts "cors_origins updated to: #{SiteSetting.cors_origins.presence || "(empty)"}"
+    else
+      puts "cors_origins did not contain #{site.origin}, left alone."
+    end
   end
 
   desc "Re-enable a registered website: rake chat_bridge:site:enable[site_key]"
@@ -87,7 +116,14 @@ if !defined?(CHAT_BRIDGE_RAKE_TASKS_DEFINED)
     abort "No site with that key." if site.nil?
 
     site.update!(enabled: true)
+    added = chat_bridge_cors_add(site.origin)
+
     puts "Enabled #{site.name} (#{site.origin})."
+    if added
+      puts "cors_origins updated to: #{SiteSetting.cors_origins}"
+    else
+      puts "cors_origins already contained #{site.origin}, left alone."
+    end
   end
 
   desc "Revoke every widget session for one forum user: rake chat_bridge:user:revoke[username]"

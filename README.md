@@ -52,12 +52,9 @@ Then rebuild, once:
 cd /var/discourse && ./launcher rebuild app
 ```
 
-After the rebuild, in Admin, Settings:
+After the rebuild, turn on `chat_bridge_enabled` in Admin, Settings.
 
-- turn on `chat_bridge_enabled`
-- add each embedding site to `cors_origins`
-
-Register a website and get its script tag:
+Then register a website and get its script tag. This also adds the origin to the `cors_origins` site setting for you, because a registered site whose origin is missing from that list fails silently in the browser:
 
 ```sh
 cd /var/discourse && ./launcher enter app
