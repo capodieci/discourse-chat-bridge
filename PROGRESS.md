@@ -1,33 +1,46 @@
 # Progress
 
-## Done, deployed, and verified in a real browser
+## Live and working
 
-Phase 0 discovery, the plugin architecture decision, the domain model, Phase 1 infrastructure and Phase 2 in full. The plugin is live on `zoobc.pro` and the widget has been driven end to end in headless Chromium from `http://localhost:8000`, a genuinely different origin.
+The plugin is deployed on `zoobc.pro` and the widget has been driven end to end in headless Chromium from another origin, including the cold path where the visitor has no forum session and logs in through the forum's own login form.
 
-### What the browser test proved, on 2026-09-19
+## Phase 2 verification, 2026-09-19
 
-- Widget loads cross origin, mounts, opens its shadow root, renders the bubble at 56x56.
-- **Style isolation holds.** A probe element on the host page sharing the widget's internal class names picked up none of its styling.
-- Panel opens at 370x540 with the correct header and sign in prompt.
-- The sign in popup opens and lands on `https://zoobc.pro/login`, the forum's own login.
-- Cross origin `fetch` to `/chat-bridge/health` succeeds, so CORS is correct in a real browser and not only in curl.
-- Signed in: channel list loads, a channel opens, the real forum message renders with author, avatar and timestamp, composer and sign out appear.
-- **Sending works.** A message typed into the composer and sent with Enter reached Discourse and rendered back. It was deleted immediately afterwards.
-- Zero console errors, zero page errors, zero failed requests across every run.
+Both sign in paths confirmed working, on desktop and at phone width:
 
-### Bugs the testing found, all fixed
+- Already signed in to the forum: popup opens, authorises, closes itself, widget signs in.
+- **Not signed in**: popup goes to the forum login, the visitor logs in, the popup returns, authorises and closes, and the widget signs in. This is the path most visitors take, and it was completely broken.
+- Channel list, message history with real content, composer, send, mobile fullscreen.
+- 50 self checks and the load pre-flight both clean.
 
-1. **`/channels/list` returned 500.** The presenter asked a membership record for `unread_count`, which is not a method it has. Unread lives in `Chat::TrackingStateReport`. The 39 checks were all passing while this was broken, because they tested pure functions and had never handed the presenter a real Discourse object. Six integration checks now cover exactly that.
-2. **`session/me` returned a raw `avatar_template`** instead of an absolute `avatar_url`, unlike every other endpoint. Now uses the presenter like the rest.
-3. **Two checks used origins a real deployment might register**, so registering `localhost:8000` for testing made a check fail on uniqueness and look like a validation bug.
-4. **The demo page reported "no widget script tag found"** on a page where the tag was present and working. Its inline script read the tag before the parser had reached it.
+## The four production bugs found by testing against the real thing
 
-45 self checks now pass against the live forum.
+1. **Content Security Policy blocked the handshake script.** Discourse serves `script-src` with a nonce and `'strict-dynamic'`, under which `'self'` and host allow lists are ignored, so neither an inline script nor an external file runs without the nonce. The popup rendered "Signed in, you can close this window" from static HTML while its script never executed. The page now reports success only after the script has run, so this class of failure is visible rather than a page lying about having worked.
+2. **`window.opener` was severed.** Discourse serves `Cross-Origin-Opener-Policy: same-origin-allow-popups`, which cuts the opener when the opening page is on another origin, permanently. Every visitor not already signed in passes through `/login`, so `postMessage` could never work for the common case.
+3. **The COOP override had to be an `after_action`.** Discourse sets that header in an `after_action` gated on `spa_boot_request?`, true for any plain GET, so setting it in a `before_action` was silently overwritten.
+4. **Cloudflare was caching `widget.js` for a year.** Discourse serves plugin public assets with `max-age=31536000, immutable`, correct for fingerprinted filenames and wrong for a file whose URL must stay stable. `cf-cache-status: HIT` confirmed the embedding site was running the old widget and would have kept doing so. Every fix shipped would have reached nobody, with nothing visible from outside to say so.
 
-### Testing leftovers, all cleaned up
+## How signing in works now
 
-- Test message deleted, test token revoked, `http://localhost:8000` removed from `cors_origins`, local server stopped.
-- Production state confirmed afterwards: `cors_origins` back to the three real sites, zero active tokens, one live chat message, forum answering 200.
+1. The widget asks `/api/auth/begin` for a handshake and keeps the returned secret in memory. Only the id goes into the popup URL, so the address bar, history and any referrer leak nothing usable.
+2. The popup signs the visitor in through the forum and marks the handshake authorised against their user id. It mints nothing, so no usable credential is ever stored.
+3. The widget polls `/api/auth/claim` with the id and the secret. The token is minted at claim time, exactly once, for a caller that proves it knows the secret, compared in constant time.
+
+`postMessage` survives only as a shortcut to poll immediately when the opener happened to survive. Nothing depends on it.
+
+## The widget URL changed
+
+```
+https://zoobc.pro/chat-bridge/widget.js
+```
+
+Not `/plugins/discourse-chat-bridge/widget.js`. The old path is served with a one year immutable cache policy and cannot be updated. The new one is served by a controller with `max-age=300`, `must-revalidate` and an ETag.
+
+**Cloudflare currently overrides that to `max-age=14400`.** The origin sends 300 and Cloudflare rewrites it, which is its Browser Cache TTL setting. Until that is set to respect origin headers, a released fix takes up to four hours to reach browsers.
+
+## Testing leftovers, all removed
+
+Test user deleted, 10 tokens revoked, 11 handshake rows cleared, test messages deleted, `http://localhost:8000` removed from `cors_origins`, local server stopped. Production confirmed afterwards: 8 users, 1 live chat message, 0 active tokens, 0 handshakes, `cors_origins` back to the three real sites, forum answering 200.
 
 ## Decided
 
