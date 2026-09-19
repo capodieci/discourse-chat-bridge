@@ -123,17 +123,29 @@ module ChatBridge
           var payload = #{payload.to_json};
           var target = #{target_origin.to_json};
           var status = document.getElementById("status");
+
+          // The opener is often gone by now: Discourse's login page severs it
+          // when the page that opened this one is on another origin. That is
+          // expected and harmless, because the widget collects the result by
+          // asking the bridge for it. This message is only a nudge to ask now
+          // rather than on the next poll.
           try {
-            if (window.opener) {
-              window.opener.postMessage(payload, target);
-              status.textContent = "Signed in. You can close this window.";
-              window.close();
-            } else {
-              status.textContent = "Signed in. Please return to the previous tab.";
-            }
+            if (window.opener) window.opener.postMessage(payload, target);
           } catch (e) {
-            status.textContent = "Signed in, but this window could not reach the page that opened it. Please close it and try again.";
+            /* nothing to do, the widget is already polling */
           }
+
+          status.textContent = "Signed in. You can close this window.";
+
+          // Try to close regardless. A window opened by script may close itself,
+          // though a browser can refuse after a cross origin navigation, which
+          // is why the message above is written first.
+          setTimeout(function () {
+            try { window.close(); } catch (e) {}
+            setTimeout(function () {
+              status.textContent = "Signed in. You can close this window and return to the page you came from.";
+            }, 600);
+          }, 400);
         })();
         </script>
         </body>
