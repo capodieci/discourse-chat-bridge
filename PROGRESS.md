@@ -32,27 +32,27 @@ Verified end to end in a real browser with a fake microphone, and in the forum's
 1. **The sanitizer stripped audio entirely.** `audio` and `source` were not in the allow list, so a voice message would have rendered as an empty bubble.
 2. **Attachments are not in cooked HTML at all.** A message that is only a recording has an empty `cooked` string and its file hanging off the `uploads` association, so a presenter reading `cooked` shows nothing. Attachments are now passed as data and the widget builds the player, which also means a future change to Discourse's markup cannot silently break playback.
 
-### 2. Admin page, all per site settings
+### 2. Admin page, all per site settings [DONE 2026-09-19]
 
-Backend complete and verified. The page itself is blocked on a decision, see below.
+Built as a server rendered page at **`https://zoobc.pro/chat-bridge/admin`**, after finding that plugin JavaScript compiles into the application bundle at container build time, so an Ember page would have needed a full rebuild to appear and another for every change while building it. Rob chose the server rendered route with that in front of him. It deploys with a restart like the rest of the plugin and cannot break when Discourse changes its admin conventions.
 
 - [x] Per site theme validation and storage. `accent` must be an exact hex colour, `position` is an enum, `launcher_label` is capped. Checked against named colours, `rgb()`, `url()`, `expression()` and a value carrying a semicolon, all refused.
-- [x] Widget honours the theme. Accent is applied as a CSS custom property rather than concatenated into a stylesheet, so even a validation slip cannot become CSS injection. Position moves the bubble and panel to either corner, including under the mobile fullscreen rules.
-- [x] Per site feature toggles for direct messages and voice messages, enforced on the server as well as hidden in the widget, because hiding a button is not a permission check.
-- [x] Staff only admin endpoints, inheriting Discourse's own admin controller. They keep `cors_origins` in step automatically, including removing an origin when a site is disabled, renamed or deleted, while keeping one that another enabled site still uses.
-- [ ] The admin page itself. **Blocked, see the note below.**
-- [ ] The security warning on the form.
-- [ ] The one channel option and its note.
+- [x] Widget honours the theme. Verified in a browser: accent reached the bubble and header as `rgb(142, 68, 173)`, the panel moved to the left corner, and the panel title changed.
+- [x] Per site feature toggles for direct messages and voice messages, enforced on the server as well as hidden in the widget, because hiding a button is not a permission check. Verified: with direct messages off, the New message button was absent while the microphone remained.
+- [x] Staff only admin endpoints, inheriting Discourse's own admin controller. They keep `cors_origins` in step, including removing an origin when a site is disabled, renamed or deleted, while keeping one another enabled site still uses.
+- [x] The page itself. Lists every site with its colour, corner, panel title, toggles, active session count and a ready to copy script tag. A site whose origin has fallen out of `cors_origins` is flagged, because that failure is silent in the browser.
+- [x] The security warning sits on the page and beside the origin field, saying that a listed site can act as your members.
+- [x] The single channel option, offering only open category channels, with a note that everyone in a pinned channel sees everyone's messages and that direct messages are off for such a site.
 
-#### What blocks the page
+#### Verified in a browser as a real administrator
 
-Rob chose a real Ember page under Admin, Plugins. Building the backend turned up a cost that was not visible when that choice was made.
+A temporary administrator was created for this, used, and deleted. Editing accent, corner and panel title saved and survived a reload. An accent of `red; background:url(//evil)` was refused with a readable message rather than reaching a stylesheet.
 
-Plugin JavaScript is compiled into `app/assets/generated/<plugin>/js` **when the container is built**. Our plugin has no such bundle because it ships no Ember assets. So an Ember admin page does not appear after a `git pull` and a restart: it needs a full `./launcher rebuild`, and so does every subsequent change to it during development.
+**One thing changed on a live site during testing and was reverted:** the zoobc.com theme was briefly set to purple, bottom-left and "Talk to us" while proving the save path, then reset. Subsequent theme testing used the disabled localhost site instead.
 
-Every deployment so far has been a pull plus an eighteen second restart. With an Ember page those become rebuilds, which are the operation this project has been most careful about, need explicit approval each time, and take minutes rather than seconds. `CLAUDE.md` also states no build step as a preference.
+#### Coverage note
 
-The alternative is a server rendered page inside the plugin: plain HTML and vanilla JavaScript, staff guarded, deployed by a restart like everything else. It would live at `/chat-bridge/admin` rather than under `/admin/plugins/`, because Discourse serves its own single page application for admin paths and a server rendered page there would be intercepted by it.
+The single channel select was added after the browser session and its logic verified directly rather than through the page: the channel list and the pinning behaviour were confirmed, but that one control has not been clicked in a browser. It uses the same mechanism as the five fields that were.
 
 ### 3. What the visitor can change
 
