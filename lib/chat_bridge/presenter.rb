@@ -32,7 +32,11 @@ module ChatBridge
       }
     end
 
-    def channel(record, membership: nil)
+    # tracking is one entry from Chat::TrackingStateReport#channel_tracking,
+    # which is where Discourse actually keeps unread counts. They are not on the
+    # membership record: that holds last_read_message_id, and the count is
+    # derived from it elsewhere.
+    def channel(record, membership: nil, tracking: nil)
       {
         id: record.id,
         title: channel_title(record),
@@ -40,9 +44,17 @@ module ChatBridge
         kind: record.direct_message_channel? ? "dm" : "category",
         status: record.status,
         last_message_id: record.last_message_id,
-        unread_count: membership&.unread_count || 0,
+        unread_count: tracking_value(tracking, :unread_count),
+        mention_count: tracking_value(tracking, :mention_count),
         muted: membership&.muted || false,
       }
+    end
+
+    # The tracking report hands back symbol keyed hashes, but the same data
+    # arrives string keyed once it has been through as_json, so both are read.
+    def tracking_value(tracking, key)
+      return 0 if tracking.nil?
+      (tracking[key] || tracking[key.to_s] || 0).to_i
     end
 
     # A direct message channel has no name of its own, so Discourse builds a

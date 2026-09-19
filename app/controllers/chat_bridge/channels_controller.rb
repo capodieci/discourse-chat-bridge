@@ -16,11 +16,18 @@ module ChatBridge
 
       structured = result.structured
       memberships = index_memberships(structured)
+      tracking = channel_tracking(structured)
 
       channels =
         (Array(structured[:public_channels]) + Array(structured[:direct_message_channels]))
           .select { |c| bridge_site.permits_channel?(c.id) }
-          .map { |c| ChatBridge::Presenter.channel(c, membership: memberships[c.id]) }
+          .map do |c|
+            ChatBridge::Presenter.channel(
+              c,
+              membership: memberships[c.id],
+              tracking: tracking[c.id],
+            )
+          end
 
       render_bridge_ok(channels: channels)
     end
@@ -84,6 +91,16 @@ module ChatBridge
 
     def index_memberships(structured)
       Array(structured[:memberships]).index_by(&:chat_channel_id)
+    rescue StandardError
+      {}
+    end
+
+    # Unread and mention counts come from Chat::TrackingStateReport, not from the
+    # membership rows. Guarded because it is not public API and could move.
+    def channel_tracking(structured)
+      report = structured[:tracking]
+      return {} if report.nil? || !report.respond_to?(:channel_tracking)
+      report.channel_tracking || {}
     rescue StandardError
       {}
     end

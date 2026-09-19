@@ -246,6 +246,80 @@ C.check("the transaction rolled back, nothing was left behind") do
   C.eq(ChatBridge::Site.where(origin: "https://checks.invalid").exists?, false)
 end
 
+# ------------------------------------------------- integration with discourse
+#
+# These exist because of a real bug. The sanitizer and origin checks above are
+# pure functions and were all passing while /channels/list returned a 500, for
+# the simple reason that nothing here had ever handed the presenter a real
+# Discourse object. The presenter asked a membership record for unread_count,
+# which is not a method it has. Everything below touches the live objects.
+
+real_user = User.where("id > 0").order(:id).first
+real_guardian = Guardian.new(real_user)
+
+C.check("ListUserChannels still returns the keys the controller reads") do
+  st = ::Chat::ListUserChannels.call(guardian: real_guardian).structured
+  missing = %i[public_channels direct_message_channels memberships tracking].reject { |k| st.key?(k) }
+  missing.empty? ? true : "missing keys: #{missing.inspect}"
+end
+
+C.check("the tracking report still exposes channel_tracking with unread_count") do
+  report = ::Chat::ListUserChannels.call(guardian: real_guardian).structured[:tracking]
+  return "no tracking report" if report.nil?
+  return "no channel_tracking method" if !report.respond_to?(:channel_tracking)
+  entry = report.channel_tracking.values.first
+  entry.nil? || entry.key?(:unread_count) ? true : "entry has no unread_count: #{entry.inspect}"
+end
+
+C.check("Presenter.channel works on a real channel and real membership") do
+  st = ::Chat::ListUserChannels.call(guardian: real_guardian).structured
+  channel = Array(st[:public_channels]).first
+  next true if channel.nil?
+
+  membership = Array(st[:memberships]).index_by(&:chat_channel_id)[channel.id]
+  tracking = st[:tracking].respond_to?(:channel_tracking) ? st[:tracking].channel_tracking[channel.id] : nil
+  out = ChatBridge::Presenter.channel(channel, membership: membership, tracking: tracking)
+
+  required = %i[id title slug kind status last_message_id unread_count mention_count muted]
+  missing = required.reject { |k| out.key?(k) }
+  missing.empty? ? true : "missing keys: #{missing.inspect}"
+end
+
+C.check("Presenter.message works on a real message") do
+  r = ::Chat::ListChannelMessages.call(
+    params: { channel_id: Array(::Chat::Channel.all).first&.id, page_size: 1 },
+    guardian: real_guardian,
+    options: { max_page_size: 50 },
+  )
+  next true if !r.success? || Array(r.messages).empty?
+
+  record = Array(r.messages).first
+  out = ChatBridge::Presenter.message(record, edited: false)
+  required = %i[id channel_id user html created_at edited deleted]
+  missing = required.reject { |k| out.key?(k) }
+  missing.empty? ? true : "missing keys: #{missing.inspect}"
+end
+
+C.check("Presenter.user produces avatar_url, not a raw template") do
+  out = ChatBridge::Presenter.user(real_user)
+  next "no avatar_url key" if !out.key?(:avatar_url)
+  next true if out[:avatar_url].nil?
+  out[:avatar_url].start_with?("http") ? true : "not absolute: #{out[:avatar_url].inspect}"
+end
+
+C.check("the chat service objects the controllers call all still exist") do
+  missing =
+    %w[
+      Chat::ListUserChannels
+      Chat::ListChannelMessages
+      Chat::CreateMessage
+      Chat::UpdateUserChannelLastRead
+      Chat::UserChatChannelMembership
+      Chat::MessageRevision
+    ].reject { |c| Object.const_defined?(c) }
+  missing.empty? ? true : "missing: #{missing.inspect}"
+end
+
 # ------------------------------------------------------------------ results
 
 puts "passed: #{C.passed}"
