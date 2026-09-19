@@ -136,7 +136,7 @@ end
 # --------------------------------------------------------- origin validation
 
 C.check("an exact https origin is accepted") do
-  s = ChatBridge::Site.new(name: "n", origin: "https://example.com", site_key: "k")
+  s = ChatBridge::Site.new(name: "n", origin: "https://check-only.invalid", site_key: "k")
   C.eq(s.valid?, true) == true ? true : s.errors.full_messages.join(", ")
 end
 
@@ -157,7 +157,10 @@ C.check("plain http is refused for a public host") do
 end
 
 C.check("plain http is allowed for localhost, for development") do
-  s = ChatBridge::Site.new(name: "n", origin: "http://localhost:8000", site_key: "k")
+  # A port no one would really serve on, because a port that someone might
+  # actually have registered would make this check fail on uniqueness and look
+  # like a validation bug. That happened.
+  s = ChatBridge::Site.new(name: "n", origin: "http://localhost:59997", site_key: "k")
   C.eq(s.valid?, true) == true ? true : s.errors.full_messages.join(", ")
 end
 
