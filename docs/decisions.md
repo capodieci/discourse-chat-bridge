@@ -99,7 +99,7 @@ Cloudflare's Browser Cache TTL on the forum zone rewrites the origin's `max-age=
 ## 0010: One to one calls, and what they honestly cost
 
 - Date: 2026-09-19
-- Status: planned
+- Status: deferred on 2026-09-19, kept for when it comes back
 - Context: Rob wants one to one voice calls provided they install simply and can be switched off by the forum admin.
 - Decision: peer to peer WebRTC with public STUN for discovery. No SFU. Optional TURN, configured by the admin, for the networks that refuse direct connections. Off by default, with a global site setting and a per site toggle.
 - Consequences, stated plainly rather than discovered later:
@@ -110,7 +110,15 @@ Cloudflare's Browser Cache TTL on the forum zone rewrites the origin's `max-age=
 ## 0011: Voice messages need a site setting the admin must change
 
 - Date: 2026-09-19
-- Status: planned
+- Status: superseded on the same day, see the amendment at the end
 - Context: the forum's `authorized_extensions` currently contains no audio format at all. Chrome records WebM Opus and Safari records MP4 AAC, so on this forum today a voice message would fail on Chrome and succeed on Safari by accident.
 - Decision: the plugin does not silently edit `authorized_extensions`. It detects the gap, and the admin page states exactly which extensions are missing and what to add.
 - Consequences: one extra step at install time, and an obvious diagnosis instead of a feature that half works depending on the browser. Editing a forum wide upload policy without being asked is not a plugin's decision to make.
+
+### 0011 amendment: Rob authorised the change
+
+Rob explicitly authorised the plugin changing `authorized_extensions` itself, on the grounds that this forum has few users and the friction is not worth it. That decision holds for this install and is recorded in `docs/server-changes.md` with the command to undo it.
+
+It does not change what the plugin should do for other people. Editing a forum wide upload policy without being asked is still not a plugin's decision to make, so the released version detects the gap and tells the admin what to add rather than doing it silently. The difference is consent: here it was given, elsewhere it has not been.
+
+One consequence worth naming: `webm` is a video container as well as an audio one, so allowing it widens uploads beyond voice messages. That is a moderation and storage consideration rather than a security one, but it should be a conscious choice rather than a side effect.
