@@ -41,5 +41,14 @@
   "mic_denied": "Microphone access was refused. Allow it in your browser settings to send voice messages.",
   "mic_unavailable": "This browser cannot record audio.",
   "uploading": "Sending voice message",
-  "voice_too_long": "That recording reached the maximum length and was sent."
+  "voice_too_long": "That recording reached the maximum length and was sent.",
+  "settings": "Settings",
+  "sound": "Notification sound",
+  "appearance": "Appearance",
+  "appearance_system": "Follow my system",
+  "appearance_light": "Always light",
+  "appearance_dark": "Always dark",
+  "mute_channel": "Mute this conversation",
+  "muted": "Muted",
+  "done": "Done"
 }

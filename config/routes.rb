@@ -28,6 +28,7 @@ ChatBridge::Engine.routes.draw do
   match "/api/channels/list" => "channels#list", :via => %i[post options]
   match "/api/channels/mark_read" => "channels#mark_read", :via => %i[post options]
   match "/api/channels/updates" => "channels#updates", :via => %i[post options]
+  match "/api/channels/mute" => "channels#mute", :via => %i[post options]
 
   match "/api/messages/history" => "messages#history", :via => %i[post options]
   match "/api/messages/send" => "messages#send_message", :via => %i[post options]

@@ -25,3 +25,4 @@ en:
       upload_rejected: "The forum refused that upload."
       upload_not_yours: "That attachment does not belong to you."
       voice_disabled: "Voice messages are turned off for this website."
+      not_following: "You are not following that channel."

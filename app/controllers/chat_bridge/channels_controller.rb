@@ -70,6 +70,30 @@ module ChatBridge
       render_bridge_ok(channels: channels)
     end
 
+    # Muting is a real Discourse membership setting rather than a widget
+    # preference, so it follows the person back to the forum and vice versa.
+    # Sound and appearance are per viewer conveniences and stay in the browser;
+    # this one is an account level choice and belongs on the account.
+    def mute
+      channel = authorized_channel(params[:channel_id].to_i)
+      return if channel.nil?
+
+      muted = ActiveModel::Type::Boolean.new.cast(params[:muted]) ? true : false
+
+      membership =
+        ::Chat::UserChatChannelMembership.find_by(
+          user_id: bridge_user.id,
+          chat_channel_id: channel.id,
+        )
+
+      # Muting a channel you do not follow is meaningless rather than an error:
+      # there is nothing to notify you about.
+      return render_bridge_error("not_following", 404) if membership.nil?
+
+      membership.update!(muted: muted)
+      render_bridge_ok(channel_id: channel.id, muted: membership.muted)
+    end
+
     def mark_read
       channel_id = params[:channel_id].to_i
       message_id = params[:message_id].presence&.to_i

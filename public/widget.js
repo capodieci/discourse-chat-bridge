@@ -67,6 +67,15 @@
     recording: "Recording",
     stop_send: "Stop and send",
     cancel: "Cancel",
+    settings: "Settings",
+    sound: "Notification sound",
+    appearance: "Appearance",
+    appearance_system: "Follow my system",
+    appearance_light: "Always light",
+    appearance_dark: "Always dark",
+    mute_channel: "Mute this conversation",
+    muted: "Muted",
+    done: "Done",
     mic_denied: "Microphone access was refused. Allow it in your browser settings to send voice messages.",
     mic_unavailable: "This browser cannot record audio.",
     uploading: "Sending voice message",
@@ -136,8 +145,11 @@
     searching: false,
     recording: false,
     recordSeconds: 0,
-    uploading: false
+    uploading: false,
+    prefs: { sound: true, appearance: "system" }
   };
+
+  state.prefs = loadPrefs();
 
   try {
     state.token = window.sessionStorage.getItem(STORAGE_KEY);
@@ -145,6 +157,38 @@
     // Private browsing or blocked storage. The widget still works, the visitor
     // just signs in again on the next page load.
     state.token = null;
+  }
+
+  // Per viewer conveniences, kept in the visitor's own browser. Deliberately not
+  // on the server: they are preferences about this device, not about the
+  // account, and an account level setting would follow someone onto a shared
+  // computer. Every access is wrapped, because storage throws outright in
+  // private browsing and a blocked preference must not break the widget.
+  var PREFS_KEY = "dcb.prefs." + SITE_KEY;
+
+  function loadPrefs() {
+    var defaults = { sound: true, appearance: "system" };
+    try {
+      var raw = window.localStorage.getItem(PREFS_KEY);
+      if (!raw) return defaults;
+      var parsed = JSON.parse(raw);
+      return {
+        sound: parsed.sound !== false,
+        appearance: ["system", "light", "dark"].indexOf(parsed.appearance) !== -1
+          ? parsed.appearance
+          : "system"
+      };
+    } catch (e) {
+      return defaults;
+    }
+  }
+
+  function savePrefs() {
+    try {
+      window.localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs));
+    } catch (e) {
+      /* a preference that cannot be remembered is not worth an error */
+    }
   }
 
   function saveToken(token) {
@@ -720,6 +764,55 @@
       });
   }
 
+  /* ---------------------------------------------------------------- sound */
+
+  var audioContext = null;
+
+  // Synthesised rather than shipped as a file. A short two tone chime costs no
+  // request, no asset to cache and nothing to go stale, and it cannot be blocked
+  // as a third party resource on the host page.
+  function playNotification() {
+    if (!state.prefs.sound) return;
+
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!audioContext) audioContext = new Ctx();
+      if (audioContext.state === "suspended") audioContext.resume();
+
+      var now = audioContext.currentTime;
+      [[880, 0], [1320, 0.09]].forEach(function (pair) {
+        var osc = audioContext.createOscillator();
+        var gain = audioContext.createGain();
+        osc.type = "sine";
+        osc.frequency.value = pair[0];
+        gain.gain.setValueAtTime(0.0001, now + pair[1]);
+        gain.gain.exponentialRampToValueAtTime(0.12, now + pair[1] + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + pair[1] + 0.18);
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.start(now + pair[1]);
+        osc.stop(now + pair[1] + 0.2);
+      });
+    } catch (e) {
+      /* audio is a nicety, never a reason to fail */
+    }
+  }
+
+  function muteChannel(channelId, muted) {
+    return api("/channels/mute", { channel_id: channelId, muted: muted })
+      .then(function (data) {
+        for (var i = 0; i < state.channels.length; i++) {
+          if (state.channels[i].id === data.channel_id) state.channels[i].muted = data.muted;
+        }
+        render();
+      })
+      .catch(function (err) {
+        state.error = errorMessage(err.code);
+        render();
+      });
+  }
+
   /* ------------------------------------------------------------ transport
    *
    * An object with start, stop, onEvents and onUnread, and nothing else, so the
@@ -842,7 +935,12 @@
 
   transport.onEvents(function (messages) {
     var atBottom = isAtBottom();
+    var fromSomeoneElse = messages.some(function (m) {
+      return !state.user || !m.user || m.user.id !== state.user.id;
+    });
+
     mergeMessages(messages);
+    if (fromSomeoneElse) playNotification();
     if (!state.open) {
       state.unread += messages.length;
     }
@@ -864,63 +962,70 @@
   style.textContent = [
     ":host{all:initial}",
     "*{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}",
-    ".wrap{position:fixed;bottom:16px;right:16px;display:flex;flex-direction:column;align-items:flex-end;gap:10px}",
+    ".wrap{--p-bg:#fff;--p-fg:#1b1b1b;--p-line:#e6e6e6;--p-input:#fff;--p-input-line:#d6d6d6;",
+    "--p-hover:#f1f5f9;--p-muted:#555;--p-soft:#f4f4f4;--p-sub:#777;",
+    "position:fixed;bottom:16px;right:16px;display:flex;flex-direction:column;align-items:flex-end;gap:10px}",
     ".wrap.left{right:auto;left:16px;align-items:flex-start}",
     ".bubble{width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;background:var(--cb-accent,#0b6ecf);color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;position:relative}",
     ".bubble:hover{filter:brightness(.92)}",
     ".bubble svg{width:26px;height:26px;fill:currentColor}",
     ".badge{position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;border-radius:10px;background:#d4351c;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px}",
-    ".panel{width:370px;max-width:calc(100vw - 32px);height:540px;max-height:calc(100vh - 110px);background:#fff;color:#1b1b1b;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:flex;flex-direction:column;overflow:hidden}",
+    ".panel{width:370px;max-width:calc(100vw - 32px);height:540px;max-height:calc(100vh - 110px);background:var(--p-bg);color:var(--p-fg);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:flex;flex-direction:column;overflow:hidden}",
     ".hd{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--cb-accent,#0b6ecf);color:#fff;flex:0 0 auto}",
     ".hd h2{margin:0;font-size:15px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
     ".hd button{background:transparent;border:none;color:#fff;cursor:pointer;font-size:13px;padding:4px 6px;border-radius:5px}",
     ".hd button:hover{background:rgba(255,255,255,.18)}",
     ".body{flex:1 1 auto;overflow-y:auto;padding:12px}",
-    ".ft{flex:0 0 auto;border-top:1px solid #e6e6e6;padding:8px;display:flex;gap:8px}",
-    ".ft textarea{flex:1;resize:none;border:1px solid #d6d6d6;border-radius:8px;padding:8px 10px;font-size:14px;min-height:38px;max-height:120px;line-height:1.35;color:inherit;background:#fff}",
+    ".ft{flex:0 0 auto;border-top:1px solid var(--p-line);padding:8px;display:flex;gap:8px}",
+    ".ft textarea{flex:1;resize:none;border:1px solid var(--p-input-line);border-radius:8px;padding:8px 10px;font-size:14px;min-height:38px;max-height:120px;line-height:1.35;color:inherit;background:var(--p-input)}",
     ".ft textarea:focus{outline:2px solid var(--cb-accent,#0b6ecf);outline-offset:-1px}",
     ".ft button{border:none;background:var(--cb-accent,#0b6ecf);color:#fff;border-radius:8px;padding:0 14px;cursor:pointer;font-size:14px;font-weight:600}",
     ".ft button:disabled{background:#9bb9d8;cursor:default}",
     ".ft button.mic{background:transparent;color:var(--cb-accent,#0b6ecf);padding:0 8px;display:flex;align-items:center}",
     ".ft button.mic:hover{filter:brightness(.92)}",
     ".ft button.mic svg{width:22px;height:22px;fill:currentColor}",
-    ".ft button.ghost{background:transparent;color:#666;font-weight:500}",
+    ".ft button.ghost{background:transparent;color:var(--p-muted);font-weight:500}",
     ".ft.recording{align-items:center}",
-    ".ft .rec{flex:1;display:flex;align-items:center;gap:8px;font-size:14px;color:#444;padding-left:4px}",
+    ".ft .rec{flex:1;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--p-muted);padding-left:4px}",
     ".ft .rec .dot{width:10px;height:10px;border-radius:50%;background:#d4351c;animation:cbpulse 1.2s ease-in-out infinite}",
     "@keyframes cbpulse{0%,100%{opacity:1}50%{opacity:.25}}",
     ".msg .txt audio{width:100%;max-width:260px;margin-top:4px;display:block}",
     ".msg .txt img.att{max-width:100%;border-radius:8px;margin-top:4px;display:block}",
-    ".msg .txt a.file{display:inline-block;margin-top:4px;padding:6px 10px;border:1px solid #ddd;border-radius:8px;text-decoration:none;font-size:13px}",
+    ".msg .txt a.file{display:inline-block;margin-top:4px;padding:6px 10px;border:1px solid var(--p-input-line);border-radius:8px;text-decoration:none;font-size:13px}",
     ".msg .txt a.file span{color:#777}",
     ".ch{display:block;width:100%;text-align:left;border:none;background:transparent;padding:10px;border-radius:8px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:8px}",
-    ".ch:hover{background:#f1f5f9}",
+    ".ch:hover{background:var(--p-hover)}",
     ".ch .n{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
     ".ch .u{background:#d4351c;color:#fff;border-radius:9px;min-width:18px;height:18px;font-size:11px;display:flex;align-items:center;justify-content:center;padding:0 5px}",
     ".msg{display:flex;gap:8px;padding:6px 0}",
     ".msg img.av{width:32px;height:32px;border-radius:50%;flex:0 0 auto}",
     ".msg .c{flex:1;min-width:0}",
     ".msg .meta{font-size:12px;color:#666;margin-bottom:2px}",
-    ".msg .meta b{color:#1b1b1b;font-weight:600}",
+    ".msg .meta b{color:var(--p-fg);font-weight:600}",
     ".msg .txt{font-size:14px;line-height:1.45;word-wrap:break-word;overflow-wrap:anywhere}",
     ".msg .txt p{margin:0 0 6px}",
     ".msg .txt p:last-child{margin:0}",
     ".msg .txt img.emoji{width:18px;height:18px;vertical-align:-3px}",
-    ".msg .txt pre{background:#f4f4f4;padding:8px;border-radius:6px;overflow-x:auto}",
-    ".msg .txt code{background:#f4f4f4;padding:1px 4px;border-radius:4px;font-family:ui-monospace,monospace;font-size:13px}",
+    ".msg .txt pre{background:var(--p-soft);padding:8px;border-radius:6px;overflow-x:auto}",
+    ".msg .txt code{background:var(--p-soft);padding:1px 4px;border-radius:4px;font-family:ui-monospace,monospace;font-size:13px}",
     ".msg .txt blockquote{margin:0;padding-left:10px;border-left:3px solid #ddd;color:#555}",
     ".msg .txt a{color:var(--cb-accent,#0b6ecf)}",
     ".search{padding:0 0 8px}",
-    ".search input{width:100%;border:1px solid #d6d6d6;border-radius:8px;padding:9px 11px;font-size:14px;background:#fff;color:inherit}",
+    ".search input{width:100%;border:1px solid var(--p-input-line);border-radius:8px;padding:9px 11px;font-size:14px;background:var(--p-input);color:inherit}",
     ".search input:focus{outline:2px solid var(--cb-accent,#0b6ecf);outline-offset:-1px}",
-    ".ch .sub{display:block;font-size:12px;color:#777;font-weight:400}",
+    ".ch .sub{display:block;font-size:12px;color:var(--p-sub);font-weight:400}",
     ".ch .dm{color:#888;font-weight:700;flex:0 0 auto}",
     ".ch img.av{width:28px;height:28px;border-radius:50%;flex:0 0 auto}",
-    ".note{padding:16px;text-align:center;color:#555;font-size:14px;line-height:1.5}",
-    ".note h3{margin:0 0 6px;font-size:15px;color:#1b1b1b}",
+    ".settings{padding:4px 2px}",
+    ".settings .opt{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 8px;border-bottom:1px solid var(--p-line);font-size:14px}",
+    ".settings .opt:last-child{border-bottom:none}",
+    ".settings label.opt{cursor:pointer;justify-content:flex-start;gap:10px}",
+    ".settings select{font:inherit;padding:5px 7px;border:1px solid var(--p-input-line);border-radius:7px;background:var(--p-input);color:inherit}",
+    ".note{padding:16px;text-align:center;color:var(--p-muted);font-size:14px;line-height:1.5}",
+    ".note h3{margin:0 0 6px;font-size:15px;color:var(--p-fg)}",
     ".err{background:#fdecea;color:#8b1a10;padding:8px 12px;font-size:13px}",
     ".btn{border:none;background:var(--cb-accent,#0b6ecf);color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-size:14px;font-weight:600}",
-    ".more{width:100%;border:1px solid #ddd;background:#fff;border-radius:8px;padding:6px;cursor:pointer;font-size:13px;color:#444;margin-bottom:8px}",
+    ".more{width:100%;border:1px solid var(--p-input-line);background:var(--p-input);border-radius:8px;padding:6px;cursor:pointer;font-size:13px;color:var(--p-muted);margin-bottom:8px}",
     // On a phone a 358px card wastes most of the screen and leaves the composer
     // cramped, so the panel takes the whole viewport instead and the bubble gets
     // out of the way. dvh rather than vh, because vh on mobile browsers measures
@@ -934,20 +1039,16 @@
     ".wrap.open .ft{padding-bottom:max(8px,env(safe-area-inset-bottom))}",
     ".wrap.open .hd button[data-act=close]{font-size:22px;padding:4px 10px}",
     "}",
+    // The palette is defined twice on purpose. Once for visitors following
+    // their system, skipped when they have explicitly chosen light, and once
+    // for an explicit dark choice. A media query cannot be overridden by a
+    // class, so a single definition would make the setting a one way door.
     "@media (prefers-color-scheme: dark){",
-    ".panel{background:#1f2124;color:#e8e8e8}",
-    ".ft{border-top-color:#33363a}",
-    ".ft textarea{background:#2a2d31;border-color:#3a3d42;color:#e8e8e8}",
-    ".ch:hover{background:#2a2d31}",
-    ".search input{background:#2a2d31;border-color:#3a3d42;color:#e8e8e8}",
-    ".ch .sub{color:#9a9a9a}",
-    ".ft .rec{color:#ccc}",
-    ".ft button.ghost{color:#aaa}",
-    ".msg .meta b{color:#e8e8e8}",
-    ".msg .txt pre,.msg .txt code{background:#2a2d31}",
-    ".note{color:#b4b4b4}.note h3{color:#e8e8e8}",
-    ".more{background:#2a2d31;border-color:#3a3d42;color:#ccc}",
-    "}"
+    ".wrap:not(.appearance-light){" + "--p-bg:#1f2124;--p-fg:#e8e8e8;--p-line:#33363a;--p-input:#2a2d31;--p-input-line:#3a3d42;"+
+    "--p-hover:#2a2d31;--p-muted:#b4b4b4;--p-soft:#2a2d31;--p-sub:#9a9a9a;" + "}",
+    "}",
+    ".wrap.appearance-dark{" + "--p-bg:#1f2124;--p-fg:#e8e8e8;--p-line:#33363a;--p-input:#2a2d31;--p-input-line:#3a3d42;"+
+    "--p-hover:#2a2d31;--p-muted:#b4b4b4;--p-soft:#2a2d31;--p-sub:#9a9a9a;" + "}",
   ].join("");
   root.appendChild(style);
 
@@ -1072,6 +1173,31 @@
         esc(t("error_not_allowed_body")) + "</p></div>"
       );
     }
+    if (state.view === "settings") {
+      var ch = activeChannel();
+      var opts = [
+        ["system", t("appearance_system")],
+        ["light", t("appearance_light")],
+        ["dark", t("appearance_dark")]
+      ].map(function (pair) {
+        return '<option value="' + pair[0] + '"' +
+               (state.prefs.appearance === pair[0] ? " selected" : "") + ">" + esc(pair[1]) + "</option>";
+      }).join("");
+
+      return (
+        '<div class="settings">' +
+        '<label class="opt"><input type="checkbox" data-pref="sound"' +
+        (state.prefs.sound ? " checked" : "") + "> " + esc(t("sound")) + "</label>" +
+        '<div class="opt"><span>' + esc(t("appearance")) + "</span>" +
+        '<select data-pref="appearance">' + opts + "</select></div>" +
+        (ch
+          ? '<label class="opt"><input type="checkbox" data-pref="muted"' +
+            (ch.muted ? " checked" : "") + "> " + esc(t("mute_channel")) + "</label>"
+          : "") +
+        "</div>"
+      );
+    }
+
     if (state.view === "search") {
       var results = "";
       if (state.searching) {
@@ -1185,21 +1311,33 @@
     // only one channel seems tidy and is a trap: the channel list is also where
     // New message lives, so a visitor following a single channel could never
     // start a direct message.
-    var showBack = state.view === "search" || state.view === "messages";
+    var showBack =
+      state.view === "search" || state.view === "settings" || state.view === "messages";
     var title =
-      state.view === "search"
+      state.view === "settings"
+        ? t("settings")
+        : state.view === "search"
         ? t("search_people")
         : state.view === "messages" && ch
           ? ch.title
           : themeValue("launcher_label", t("panel_title"));
-    var canCompose = state.token && state.user && state.user.can_chat && state.view === "messages" && state.activeChannelId;
+    var canCompose =
+      state.token && state.user && state.user.can_chat && state.view === "messages" &&
+      state.activeChannelId;
 
     return (
       '<div class="panel" role="dialog" aria-label="' + esc(t("panel_title")) + '">' +
       '<div class="hd">' +
       (showBack ? '<button data-act="back">' + esc(t("back")) + "</button>" : "") +
       "<h2>" + esc(title) + "</h2>" +
-      (state.token ? '<button data-act="signout">' + esc(t("sign_out")) + "</button>" : "") +
+      (state.token
+        ? '<button data-act="settings" aria-label="' + esc(t("settings")) + '" title="' +
+          esc(t("settings")) + '">' +
+          '<svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16"><path fill="currentColor" ' +
+          'd="M19.4 13a7.7 7.7 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3.2h-4l-.3 2.7a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4L4.6 11a7.7 7.7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 1.7 1l.3 2.7h4l.3-2.7a7.6 7.6 0 0 0 1.7-1l2.4 1 2-3.4zM12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg>' +
+          "</button>" +
+          '<button data-act="signout">' + esc(t("sign_out")) + "</button>"
+        : "") +
       '<button data-act="close" aria-label="' + esc(t("close")) + '">&times;</button>' +
       "</div>" +
       (state.error ? '<div class="err">' + esc(state.error) + "</div>" : "") +
@@ -1230,7 +1368,11 @@
     }
 
     var left = themeValue("position", "bottom-right") === "bottom-left";
-    wrap.className = (state.open ? "wrap open" : "wrap") + (left ? " left" : "");
+    wrap.className =
+      (state.open ? "wrap open" : "wrap") +
+      (left ? " left" : "") +
+      (state.prefs.appearance === "light" ? " appearance-light" : "") +
+      (state.prefs.appearance === "dark" ? " appearance-dark" : "");
     wrap.innerHTML = (state.open ? renderPanel() : "") + renderBubble();
 
     var newBody = root.querySelector(".body");
@@ -1291,12 +1433,23 @@
     } else if (act === "signout") {
       signOut();
     } else if (act === "back") {
+      // Settings is reached from a conversation, so Back returns there rather
+      // than dumping the visitor at the channel list they did not come from.
+      if (state.view === "settings" && state.activeChannelId) {
+        state.view = "messages";
+        render();
+        return;
+      }
       state.view = "channels";
       state.activeChannelId = null;
       state.searchTerm = "";
       state.searchResults = [];
       transport.start(null);
       loadChannels(false);
+    } else if (act === "settings") {
+      state.view = "settings";
+      state.error = null;
+      render();
     } else if (act === "newdm") {
       state.view = "search";
       state.searchTerm = "";
@@ -1324,8 +1477,28 @@
   });
 
   wrap.addEventListener("input", function (event) {
-    if (!event.target.matches(".search .find")) return;
-    searchPeople(event.target.value);
+    if (event.target.matches(".search .find")) {
+      searchPeople(event.target.value);
+      return;
+    }
+
+    var pref = event.target.getAttribute && event.target.getAttribute("data-pref");
+    if (!pref) return;
+
+    if (pref === "sound") {
+      state.prefs.sound = event.target.checked;
+      savePrefs();
+      // Play it once on enabling, so the choice is audible rather than a claim.
+      if (state.prefs.sound) playNotification();
+      render();
+    } else if (pref === "appearance") {
+      state.prefs.appearance = event.target.value;
+      savePrefs();
+      render();
+    } else if (pref === "muted") {
+      var ch = activeChannel();
+      if (ch) muteChannel(ch.id, event.target.checked);
+    }
   });
 
   // Enter sends, Shift+Enter makes a new line, which is what every chat client
