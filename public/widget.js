@@ -149,8 +149,6 @@
     prefs: { sound: true, appearance: "system" }
   };
 
-  state.prefs = loadPrefs();
-
   try {
     state.token = window.sessionStorage.getItem(STORAGE_KEY);
   } catch (e) {
@@ -190,6 +188,12 @@
       /* a preference that cannot be remembered is not worth an error */
     }
   }
+
+  // Loaded here, after PREFS_KEY exists. Calling loadPrefs before that line ran
+  // read localStorage under the key `undefined`, which returns null, so every
+  // saved preference was silently discarded on load while saving appeared to
+  // work perfectly.
+  state.prefs = loadPrefs();
 
   function saveToken(token) {
     state.token = token;
