@@ -19,6 +19,22 @@ module ChatBridge
 
     layout false
 
+    before_action :allow_opener_access
+
+    # Discourse serves Cross-Origin-Opener-Policy: same-origin-allow-popups.
+    # That name is misleading for this case: it preserves the opener for popups
+    # this origin opens, but when the document IS a popup opened by a cross
+    # origin page, the browsing context group is switched and window.opener
+    # becomes null. The handshake then has nothing to post the token to.
+    #
+    # Discourse's own middleware only sets the header when a controller has not,
+    # so setting it here wins. This endpoint's whole purpose is to talk back to
+    # the page that opened it, and it still only ever posts to one exact
+    # registered origin.
+    def allow_opener_access
+      response.headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
+    end
+
     def start
       return render_auth_failure("chat_disabled") if !SiteSetting.chat_bridge_enabled
 
