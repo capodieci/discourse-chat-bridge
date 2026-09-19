@@ -96,6 +96,36 @@ module ChatBridge
       render_bridge_error("not_allowed", 403)
     end
 
+    # Resolves a channel id from the client and refuses it unless Discourse says
+    # this user may see it AND the embedding site is allowed to show it. Channel
+    # ids arriving from a browser are never trusted, so both checks run on every
+    # request rather than being cached per session.
+    #
+    # Renders the error and returns nil on refusal, so callers guard with
+    # `return if channel.nil?`. The same "not found" answer is used for a channel
+    # that does not exist and one the user may not see, so the endpoint cannot be
+    # used to discover which private channels exist.
+    def authorized_channel(channel_id)
+      if channel_id.to_i <= 0
+        render_bridge_error("unknown_channel", 404)
+        return nil
+      end
+
+      channel = ::Chat::Channel.find_by(id: channel_id.to_i)
+
+      if channel.nil? || !bridge_guardian.can_preview_chat_channel?(channel)
+        render_bridge_error("unknown_channel", 404)
+        return nil
+      end
+
+      if !bridge_site.permits_channel?(channel.id)
+        render_bridge_error("unknown_channel", 404)
+        return nil
+      end
+
+      channel
+    end
+
     def rate_limit_bridge!(key, max, period)
       RateLimiter.new(bridge_user, "chat_bridge_#{key}", max, period).performed!
     rescue RateLimiter::LimitExceeded

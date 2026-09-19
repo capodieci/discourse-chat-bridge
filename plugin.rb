@@ -14,6 +14,8 @@ module ::ChatBridge
 end
 
 require_relative "lib/chat_bridge/engine"
+require_relative "lib/chat_bridge/sanitizer"
+require_relative "lib/chat_bridge/presenter"
 
 after_initialize do
   Discourse::Application.routes.append { mount ::ChatBridge::Engine, at: "/chat-bridge" }

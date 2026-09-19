@@ -27,11 +27,21 @@
 
 The server side works and is reachable. What does not exist yet is anything a visitor can see.
 
+Done, written and verified against real forum data, but not yet deployed:
+
+- **Bridge endpoints.** `channels/list`, `channels/mark_read`, `messages/history`, `messages/send`. These call Discourse's own service objects (`Chat::ListUserChannels`, `Chat::ListChannelMessages`, `Chat::CreateMessage`, `Chat::UpdateUserChannelLastRead`) with the bridge guardian, so permissions are Discourse's answer and not ours.
+- **`ChatBridge::Sanitizer`.** A second strict pass over Discourse's `cooked` HTML before it crosses to another origin. Uses `Rails::HTML5::SafeListSanitizer`, already present, so no new dependency.
+- **`ChatBridge::Presenter`.** Small stable shapes for the widget, so no Discourse serializer is ever exposed to a third party site.
+- **`authorized_channel`** in the base controller. Channel ids from the browser are checked against both Discourse's guardian and the site's allow list on every request, and a refused channel returns the same answer as a missing one so the endpoint cannot be used to discover private channels.
+
+Still to do:
+
 1. `public/widget.js`, vanilla JS in a Shadow DOM: corner bubble, panel, channel list, message list, composer.
 2. The `Transport` object with `start`, `stop`, `onEvents`, backed by MessageBus.
-3. Bridge endpoints the widget needs: channel list, message history, send, mark read.
-4. A demo page on a different origin to prove the popup and CORS end to end.
-5. Tests for the sanitizer, the origin checks, and the permission checks.
+3. A demo page on a different origin to prove the popup and CORS end to end.
+4. Tests for the sanitizer, the origin checks, and the permission checks.
+
+The new endpoints are written but **not deployed**. The plugin running on the forum is still the Phase 1 version. Deploying is a `git pull` in the container plus a Rails restart, which needs approval.
 
 ## Decided
 

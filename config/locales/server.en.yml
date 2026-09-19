@@ -12,3 +12,5 @@ en:
       chat_disabled: "Chat is not enabled on this forum."
       not_allowed: "Your forum account is not permitted to use chat yet."
       rate_limited: "Too many requests. Please wait a moment."
+      unknown_channel: "That channel does not exist, or you do not have access to it."
+      empty_message: "A message cannot be empty."
