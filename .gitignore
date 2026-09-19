@@ -7,3 +7,7 @@ config.local.*
 *.pem
 *.key
 *.log
+
+# Host specific inventory. Useful to us, but it is a reconnaissance sheet for
+# anyone targeting the forum, so it stays out of the public repository.
+docs/local/
