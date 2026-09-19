@@ -7,7 +7,8 @@ module ChatBridge
         user: ChatBridge::Presenter.user(bridge_user).merge(can_chat: bridge_guardian.can_chat?),
         site: {
           name: bridge_site.name,
-          theme: bridge_site.theme,
+          theme: bridge_site.theme_settings,
+          features: bridge_site.feature_settings,
         },
         expires_at: bridge_token.expires_at.iso8601,
       )

@@ -4,6 +4,8 @@ en:
     chat_bridge_token_ttl_hours: "How many hours a widget session token stays valid before the visitor must sign in again."
     chat_bridge_nonce_ttl_seconds: "How many seconds a login handshake value stays valid. Short is safer."
   chat_bridge:
+    admin:
+      title: "Chat Bridge"
     errors:
       unknown_site: "This website is not registered to embed chat."
       site_disabled: "Chat embedding is disabled for this website."
@@ -22,3 +24,4 @@ en:
       upload_too_large: "That recording is too large."
       upload_rejected: "The forum refused that upload."
       upload_not_yours: "That attachment does not belong to you."
+      voice_disabled: "Voice messages are turned off for this website."

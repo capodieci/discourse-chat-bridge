@@ -71,12 +71,13 @@ module ChatBridge
 
     private
 
-    # A site pinned to specific channels does not get direct messages. A DM
-    # channel is created on demand, so it can never appear in an allow list
+    # Two independent reasons a site may not have direct messages: the
+    # administrator turned them off, or the site is pinned to specific channels.
+    # A DM channel is created on demand, so it can never appear in an allow list
     # written in advance, and silently permitting it would widen a configuration
     # that was deliberately narrowed.
     def dm_available?
-      bridge_site.allowed_channel_ids.blank?
+      bridge_site.feature?("direct_messages") && bridge_site.allowed_channel_ids.blank?
     end
   end
 end

@@ -345,6 +345,7 @@
         state.user = data.user;
         state.site = data.site;
         state.loading = false;
+        applyTheme();
         if (!data.user.can_chat) {
           render();
           return;
@@ -864,23 +865,24 @@
     ":host{all:initial}",
     "*{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}",
     ".wrap{position:fixed;bottom:16px;right:16px;display:flex;flex-direction:column;align-items:flex-end;gap:10px}",
-    ".bubble{width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;background:#0b6ecf;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;position:relative}",
-    ".bubble:hover{background:#0a5fb3}",
+    ".wrap.left{right:auto;left:16px;align-items:flex-start}",
+    ".bubble{width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;background:var(--cb-accent,#0b6ecf);color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;position:relative}",
+    ".bubble:hover{filter:brightness(.92)}",
     ".bubble svg{width:26px;height:26px;fill:currentColor}",
     ".badge{position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;border-radius:10px;background:#d4351c;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px}",
     ".panel{width:370px;max-width:calc(100vw - 32px);height:540px;max-height:calc(100vh - 110px);background:#fff;color:#1b1b1b;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:flex;flex-direction:column;overflow:hidden}",
-    ".hd{display:flex;align-items:center;gap:8px;padding:12px 14px;background:#0b6ecf;color:#fff;flex:0 0 auto}",
+    ".hd{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--cb-accent,#0b6ecf);color:#fff;flex:0 0 auto}",
     ".hd h2{margin:0;font-size:15px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
     ".hd button{background:transparent;border:none;color:#fff;cursor:pointer;font-size:13px;padding:4px 6px;border-radius:5px}",
     ".hd button:hover{background:rgba(255,255,255,.18)}",
     ".body{flex:1 1 auto;overflow-y:auto;padding:12px}",
     ".ft{flex:0 0 auto;border-top:1px solid #e6e6e6;padding:8px;display:flex;gap:8px}",
     ".ft textarea{flex:1;resize:none;border:1px solid #d6d6d6;border-radius:8px;padding:8px 10px;font-size:14px;min-height:38px;max-height:120px;line-height:1.35;color:inherit;background:#fff}",
-    ".ft textarea:focus{outline:2px solid #0b6ecf;outline-offset:-1px}",
-    ".ft button{border:none;background:#0b6ecf;color:#fff;border-radius:8px;padding:0 14px;cursor:pointer;font-size:14px;font-weight:600}",
+    ".ft textarea:focus{outline:2px solid var(--cb-accent,#0b6ecf);outline-offset:-1px}",
+    ".ft button{border:none;background:var(--cb-accent,#0b6ecf);color:#fff;border-radius:8px;padding:0 14px;cursor:pointer;font-size:14px;font-weight:600}",
     ".ft button:disabled{background:#9bb9d8;cursor:default}",
-    ".ft button.mic{background:transparent;color:#0b6ecf;padding:0 8px;display:flex;align-items:center}",
-    ".ft button.mic:hover{color:#0a5fb3}",
+    ".ft button.mic{background:transparent;color:var(--cb-accent,#0b6ecf);padding:0 8px;display:flex;align-items:center}",
+    ".ft button.mic:hover{filter:brightness(.92)}",
     ".ft button.mic svg{width:22px;height:22px;fill:currentColor}",
     ".ft button.ghost{background:transparent;color:#666;font-weight:500}",
     ".ft.recording{align-items:center}",
@@ -907,17 +909,17 @@
     ".msg .txt pre{background:#f4f4f4;padding:8px;border-radius:6px;overflow-x:auto}",
     ".msg .txt code{background:#f4f4f4;padding:1px 4px;border-radius:4px;font-family:ui-monospace,monospace;font-size:13px}",
     ".msg .txt blockquote{margin:0;padding-left:10px;border-left:3px solid #ddd;color:#555}",
-    ".msg .txt a{color:#0b6ecf}",
+    ".msg .txt a{color:var(--cb-accent,#0b6ecf)}",
     ".search{padding:0 0 8px}",
     ".search input{width:100%;border:1px solid #d6d6d6;border-radius:8px;padding:9px 11px;font-size:14px;background:#fff;color:inherit}",
-    ".search input:focus{outline:2px solid #0b6ecf;outline-offset:-1px}",
+    ".search input:focus{outline:2px solid var(--cb-accent,#0b6ecf);outline-offset:-1px}",
     ".ch .sub{display:block;font-size:12px;color:#777;font-weight:400}",
     ".ch .dm{color:#888;font-weight:700;flex:0 0 auto}",
     ".ch img.av{width:28px;height:28px;border-radius:50%;flex:0 0 auto}",
     ".note{padding:16px;text-align:center;color:#555;font-size:14px;line-height:1.5}",
     ".note h3{margin:0 0 6px;font-size:15px;color:#1b1b1b}",
     ".err{background:#fdecea;color:#8b1a10;padding:8px 12px;font-size:13px}",
-    ".btn{border:none;background:#0b6ecf;color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-size:14px;font-weight:600}",
+    ".btn{border:none;background:var(--cb-accent,#0b6ecf);color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-size:14px;font-weight:600}",
     ".more{width:100%;border:1px solid #ddd;background:#fff;border-radius:8px;padding:6px;cursor:pointer;font-size:13px;color:#444;margin-bottom:8px}",
     // On a phone a 358px card wastes most of the screen and leaves the composer
     // cramped, so the panel takes the whole viewport instead and the bubble gets
@@ -925,7 +927,7 @@
     // the viewport as if the address bar were hidden, which pushes the composer
     // under it.
     "@media (max-width: 480px){",
-    ".wrap.open{inset:0;bottom:0;right:0;gap:0}",
+    ".wrap.open{inset:0;bottom:0;right:0;left:0;gap:0}",
     ".wrap.open .panel{width:100%;max-width:100%;height:100vh;height:100dvh;max-height:none;border-radius:0}",
     ".wrap.open .bubble{display:none}",
     ".wrap.open .hd{padding:14px;padding-top:max(14px,env(safe-area-inset-top))}",
@@ -975,6 +977,32 @@
       if (state.channels[i].id === state.activeChannelId) return state.channels[i];
     }
     return null;
+  }
+
+  // Applied as a custom property rather than concatenated into the stylesheet.
+  // The server validates the colour as an exact hex value, but setting it as a
+  // property means even a validation slip cannot become CSS injection: the
+  // browser either accepts it as a colour or ignores it.
+  function applyTheme() {
+    var theme = (state.site && state.site.theme) || {};
+
+    if (theme.accent) {
+      host.style.setProperty("--cb-accent", theme.accent);
+    } else {
+      host.style.removeProperty("--cb-accent");
+    }
+
+    render();
+  }
+
+  function themeValue(key, fallback) {
+    var theme = (state.site && state.site.theme) || {};
+    return theme[key] || fallback;
+  }
+
+  function siteAllows(feature) {
+    var features = (state.site && state.site.features) || {};
+    return features[feature] !== false;
   }
 
   function renderBubble() {
@@ -1071,8 +1099,9 @@
     }
 
     if (state.view === "channels" || !state.activeChannelId) {
-      var newBtn =
-        '<button class="more" data-act="newdm">' + esc(t("new_message")) + "</button>";
+      var newBtn = siteAllows("direct_messages")
+        ? '<button class="more" data-act="newdm">' + esc(t("new_message")) + "</button>"
+        : "";
       if (!state.channels.length) {
         return newBtn + '<div class="note">' + esc(t("no_channels")) + "</div>";
       }
@@ -1139,10 +1168,12 @@
     return (
       '<div class="ft">' +
       '<textarea rows="1" placeholder="' + esc(t("composer_placeholder")) + '"></textarea>' +
-      '<button class="mic" data-act="record" aria-label="' + esc(t("record")) + '" title="' +
-      esc(t("record")) + '">' +
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/>' +
-      '<path d="M19 12a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12z"/></svg></button>' +
+      (siteAllows("voice_messages")
+        ? '<button class="mic" data-act="record" aria-label="' + esc(t("record")) + '" title="' +
+          esc(t("record")) + '">' +
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/>' +
+          '<path d="M19 12a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12z"/></svg></button>'
+        : "") +
       '<button data-act="send"' + (state.sending ? " disabled" : "") + ">" +
       esc(state.sending ? t("sending") : t("send")) + "</button></div>"
     );
@@ -1160,7 +1191,7 @@
         ? t("search_people")
         : state.view === "messages" && ch
           ? ch.title
-          : t("panel_title");
+          : themeValue("launcher_label", t("panel_title"));
     var canCompose = state.token && state.user && state.user.can_chat && state.view === "messages" && state.activeChannelId;
 
     return (
@@ -1198,7 +1229,8 @@
       findCaret = oldFind.selectionStart;
     }
 
-    wrap.className = state.open ? "wrap open" : "wrap";
+    var left = themeValue("position", "bottom-right") === "bottom-left";
+    wrap.className = (state.open ? "wrap open" : "wrap") + (left ? " left" : "");
     wrap.innerHTML = (state.open ? renderPanel() : "") + renderBubble();
 
     var newBody = root.querySelector(".body");

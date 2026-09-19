@@ -38,6 +38,8 @@ module ChatBridge
       rate_limit_bridge!("upload", 30, 1.minute)
       return if performed?
 
+      return render_bridge_error("voice_disabled", 403) if !bridge_site.feature?("voice_messages")
+
       file = params[:file]
       return render_bridge_error("upload_missing", 422) if file.blank? || !file.respond_to?(:tempfile)
 
