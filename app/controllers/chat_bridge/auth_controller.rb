@@ -19,7 +19,12 @@ module ChatBridge
 
     layout false
 
-    before_action :allow_opener_access
+    # Discourse sets this header in an after_action, gated on spa_boot_request?,
+    # which is true for any plain GET. So setting it in a before_action is
+    # pointless: theirs runs later and wins. Skip theirs, then set ours after the
+    # response is built, which is the only point that actually sticks.
+    skip_after_action :set_cross_origin_opener_policy_header, raise: false
+    after_action :allow_opener_access
 
     # Discourse serves Cross-Origin-Opener-Policy: same-origin-allow-popups.
     # That name is misleading for this case: it preserves the opener for popups
