@@ -14,12 +14,12 @@
 - Plugin cloned from GitHub by the container, three migrations ran, `GET /chat-bridge/health` returns 200.
 - CORS verified by request. A registered origin gets the plugin's own strict headers. An unregistered origin is refused at the application layer.
 - `auth/start` verified: an unknown site key returns 403, a valid one redirects an anonymous visitor to the forum login.
-- Two sites registered: `https://zoobc.com` and `https://zoobc.foundation`.
+- Three sites registered: `https://zoobc.com`, `https://zoobc.foundation`, `https://zoobc.network`. `https://zoobc.net` planned for later.
 
 ## Known issues and debts
 
 1. The forum was upgraded from `2026.8.0` to `2026.9.0` as a side effect of the rebuild, because `./launcher rebuild` always pulls the latest image. This was not flagged before approval. It should be flagged every future time.
-2. Three August backups were lost to the retention policy after the backup command was run three times. Suggested remedy in `docs/server-changes.md`, not yet applied, awaiting Rob.
+2. Three August backups were lost to the retention policy after the backup command was run three times. The two duplicate 19 September copies have since been deleted with Rob's approval, so retention is back to three of five slots. The August backups are not recoverable.
 3. `DISCOURSE_ENABLE_CORS` is global, not scoped to the plugin. Every Discourse endpoint now accepts cross origin requests from the two listed sites with credentials. See decision 0005.
 4. The plugin ships `CLAUDE.md`, `PROGRESS.md` and `docs/` into the container, because the repository root is the plugin root. Harmless, but untidy for a public release. Worth cleaning up before Phase 6.
 
