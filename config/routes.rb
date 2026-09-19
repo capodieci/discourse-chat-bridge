@@ -8,6 +8,9 @@ ChatBridge::Engine.routes.draw do
   # Monitoring endpoint. Effectively static, so GET is appropriate.
   get "/health" => "health#show"
 
+  # The administration page. A page, so GET.
+  get "/admin" => "admin_page#show"
+
   # The widget itself. Served here rather than from the plugin's public
   # directory, because Discourse serves that with a one year immutable cache
   # policy, which behind a CDN means a released fix reaches nobody.

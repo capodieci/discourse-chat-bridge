@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat Bridge</title>
+<style>
+  :root { color-scheme: light dark; --line:#e4e4e7; --muted:#71717a; --bg:#fff; --fg:#18181b;
+          --accent:#0b6ecf; --warn-bg:#fff7ed; --warn-fg:#9a3412; --warn-line:#fed7aa;
+          --ok:#15803d; --bad:#b91c1c; --soft:#f4f4f5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --line:#3f3f46; --muted:#a1a1aa; --bg:#18181b; --fg:#e4e4e7; --soft:#27272a;
+            --warn-bg:#2a1c0f; --warn-fg:#fdba74; --warn-line:#7c2d12; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:2rem 1rem 5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width: 56rem; margin-inline: auto; }
+  h1 { font-size:1.5rem; margin:0 0 .25rem; }
+  .sub { color:var(--muted); margin:0 0 1.5rem; }
+  .bar { display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; margin-bottom:1.25rem; }
+  .pill { font-size:.8rem; padding:.2rem .55rem; border-radius:999px; background:var(--soft); color:var(--muted); }
+  .pill.ok { color:var(--ok); } .pill.bad { color:var(--bad); }
+  button { font:inherit; border:1px solid var(--line); background:var(--soft); color:var(--fg);
+           border-radius:8px; padding:.45rem .8rem; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button.danger { color:var(--bad); }
+  button:disabled { opacity:.5; cursor:default; }
+  .card { border:1px solid var(--line); border-radius:12px; padding:1.1rem 1.25rem; margin-bottom:1rem; }
+  .card h2 { font-size:1.05rem; margin:0; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+  .card h2 .origin { color:var(--muted); font-weight:400; font-size:.9rem; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(13rem,1fr)); gap:.9rem; margin-top:1rem; }
+  label { display:block; font-size:.82rem; color:var(--muted); margin-bottom:.25rem; }
+  input[type=text], select { width:100%; font:inherit; padding:.45rem .55rem; border:1px solid var(--line);
+                             border-radius:8px; background:var(--bg); color:var(--fg); }
+  .checks { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:.9rem; }
+  .checks label { display:flex; align-items:center; gap:.4rem; color:var(--fg); font-size:.9rem; margin:0; }
+  .tag { margin-top:1rem; }
+  .tag code { display:block; background:var(--soft); border:1px solid var(--line); border-radius:8px;
+              padding:.6rem .7rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:.78rem; overflow-x:auto; white-space:pre; }
+  .row { display:flex; gap:.6rem; align-items:center; margin-top:1rem; flex-wrap:wrap; }
+  .warn { background:var(--warn-bg); border:1px solid var(--warn-line); color:var(--warn-fg);
+          border-radius:10px; padding:.7rem .85rem; font-size:.85rem; margin-top:.75rem; }
+  .warn strong { display:block; margin-bottom:.15rem; }
+  .msg { padding:.6rem .8rem; border-radius:8px; margin-bottom:1rem; font-size:.9rem; }
+  .msg.err { background:#fdecea; color:#8b1a10; }
+  .msg.ok { background:#eaf7ee; color:#14532d; }
+  .empty { color:var(--muted); padding:1.5rem 0; }
+  .swatch { width:1.6rem; height:1.6rem; border-radius:6px; border:1px solid var(--line); flex:0 0 auto; }
+  .hint { font-size:.78rem; color:var(--muted); margin-top:.3rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Chat Bridge</h1>
+  <p class="sub">Websites allowed to embed this forum's chat, and how the widget looks on each.</p>
+
+  <div class="bar" id="status"></div>
+  <div id="message"></div>
+
+  <div class="warn">
+    <strong>Only add websites you control.</strong>
+    A website listed here is allowed to make requests to this forum carrying your members'
+    credentials. If that site is ever compromised, for example by a cross site scripting hole,
+    the attacker can act as any member who visits it. Adding a partner's or a client's site means
+    accepting their security as your own.
+  </div>
+
+  <div class="row" style="margin-top:1rem">
+    <button class="primary" id="add">Add a website</button>
+  </div>
+
+  <div id="sites"></div>
+</div>
+<script nonce="__NONCE__">
+window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
+</script>
+<script nonce="__NONCE__">
+(function () {
+  "use strict";
+  var API = "/admin/plugins/chat-bridge/sites";
+  var state = { sites: [], positions: [], widget_url: "", loading: true };
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c];
+    });
+  }
+
+  function req(method, url, body) {
+    return fetch(url, {
+      method: method,
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": window.__CB.csrf,
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (json) {
+        if (!res.ok) {
+          var errs = json.errors || [json.error] || ["Request failed"];
+          throw new Error([].concat(errs).filter(Boolean).join(", ") || "Request failed");
+        }
+        return json;
+      });
+    });
+  }
+
+  function say(text, kind) {
+    document.getElementById("message").innerHTML =
+      text ? '<div class="msg ' + kind + '">' + esc(text) + "</div>" : "";
+  }
+
+  function load() {
+    return req("GET", API).then(function (data) {
+      state.sites = data.sites || [];
+      state.positions = data.positions || ["bottom-right", "bottom-left"];
+      state.widget_url = data.widget_url || "";
+      state.bridge_enabled = data.bridge_enabled;
+      state.chat_enabled = data.chat_enabled;
+      state.loading = false;
+      render();
+    }).catch(function (e) { say(e.message, "err"); });
+  }
+
+  function renderStatus() {
+    var bits = [];
+    bits.push('<span class="pill ' + (state.bridge_enabled ? "ok" : "bad") + '">bridge ' +
+              (state.bridge_enabled ? "enabled" : "disabled") + "</span>");
+    bits.push('<span class="pill ' + (state.chat_enabled ? "ok" : "bad") + '">chat ' +
+              (state.chat_enabled ? "enabled" : "disabled") + "</span>");
+    bits.push('<span class="pill">' + state.sites.length + " website" +
+              (state.sites.length === 1 ? "" : "s") + "</span>");
+    document.getElementById("status").innerHTML = bits.join("");
+  }
+
+  function renderSite(s) {
+    var opts = state.positions.map(function (p) {
+      return '<option value="' + esc(p) + '"' +
+             (s.theme.position === p ? " selected" : "") + ">" + esc(p) + "</option>";
+    }).join("");
+
+    var cors = s.in_cors_origins
+      ? ""
+      : '<div class="warn"><strong>This origin is missing from cors_origins</strong>' +
+        "The browser will refuse the connection until it is added. Saving this site adds it back.</div>";
+
+    return (
+      '<div class="card" data-id="' + s.id + '">' +
+        '<h2><span class="swatch" style="background:' + esc(s.theme.accent || "#0b6ecf") + '"></span>' +
+        esc(s.name) + ' <span class="origin">' + esc(s.origin) + "</span>" +
+        '<span class="pill ' + (s.enabled ? "ok" : "bad") + '">' + (s.enabled ? "enabled" : "disabled") + "</span>" +
+        '<span class="pill">' + s.active_sessions + ' signed in</span></h2>' +
+        cors +
+        '<div class="grid">' +
+          '<div><label>Name</label><input type="text" data-f="name" value="' + esc(s.name) + '"></div>' +
+          '<div><label>Website origin</label><input type="text" data-f="origin" value="' + esc(s.origin) + '">' +
+            '<div class="hint">Scheme and domain only, no path. This site can act as your ' +
+            "members, so only list sites you control.</div></div>" +
+          '<div><label>Accent colour</label><input type="text" data-f="accent" placeholder="#0b6ecf" value="' +
+            esc(s.theme.accent || "") + '"><div class="hint">Hex only, for example #0b6ecf.</div></div>' +
+          '<div><label>Corner</label><select data-f="position">' + opts + "</select></div>" +
+          '<div><label>Panel title</label><input type="text" data-f="launcher_label" placeholder="Community chat" value="' +
+            esc(s.theme.launcher_label || "") + '"></div>' +
+        "</div>" +
+        '<div class="checks">' +
+          '<label><input type="checkbox" data-f="direct_messages"' +
+            (s.features.direct_messages ? " checked" : "") + "> Direct messages</label>" +
+          '<label><input type="checkbox" data-f="voice_messages"' +
+            (s.features.voice_messages ? " checked" : "") + "> Voice messages</label>" +
+          '<label><input type="checkbox" data-f="enabled"' +
+            (s.enabled ? " checked" : "") + "> Enabled</label>" +
+        "</div>" +
+        '<div class="tag"><label>Paste this into that website, once, before the closing body tag</label>' +
+          "<code>" + esc(s.script_tag) + "</code></div>" +
+        '<div class="row">' +
+          '<button class="primary" data-act="save">Save</button>' +
+          '<button data-act="copy">Copy script tag</button>' +
+          '<button class="danger" data-act="delete">Remove</button>' +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function render() {
+    renderStatus();
+    var el = document.getElementById("sites");
+    if (state.loading) { el.innerHTML = '<div class="empty">Loading.</div>'; return; }
+    if (!state.sites.length) {
+      el.innerHTML = '<div class="empty">No websites yet. Add one to get a script tag.</div>';
+      return;
+    }
+    el.innerHTML = state.sites.map(renderSite).join("");
+  }
+
+  function readCard(card) {
+    function v(f) { var e = card.querySelector('[data-f="' + f + '"]'); return e ? e.value.trim() : ""; }
+    function c(f) { var e = card.querySelector('[data-f="' + f + '"]'); return e ? e.checked : false; }
+    return {
+      name: v("name"),
+      origin: v("origin"),
+      enabled: c("enabled"),
+      theme: { accent: v("accent"), position: v("position"), launcher_label: v("launcher_label") },
+      features: { direct_messages: c("direct_messages"), voice_messages: c("voice_messages") }
+    };
+  }
+
+  document.addEventListener("click", function (event) {
+    var addBtn = event.target.closest("#add");
+    if (addBtn) {
+      var origin = window.prompt("Website origin, for example https://example.com");
+      if (!origin) return;
+      var name = window.prompt("A name for it") || origin;
+      say("", "");
+      req("POST", API, { name: name, origin: origin.trim() })
+        .then(function () { say("Website added, and its origin allowed.", "ok"); return load(); })
+        .catch(function (e) { say(e.message, "err"); });
+      return;
+    }
+
+    var btn = event.target.closest("[data-act]");
+    if (!btn) return;
+    var card = btn.closest(".card");
+    var id = card.getAttribute("data-id");
+    var act = btn.getAttribute("data-act");
+
+    if (act === "save") {
+      say("", "");
+      btn.disabled = true;
+      req("PUT", API + "/" + id, readCard(card))
+        .then(function () { say("Saved.", "ok"); return load(); })
+        .catch(function (e) { say(e.message, "err"); btn.disabled = false; });
+    } else if (act === "copy") {
+      var code = card.querySelector(".tag code").textContent;
+      navigator.clipboard.writeText(code).then(
+        function () { say("Script tag copied.", "ok"); },
+        function () { say("Could not copy. Select the text and copy it manually.", "err"); }
+      );
+    } else if (act === "delete") {
+      var origin = card.querySelector('[data-f="origin"]').value;
+      if (!window.confirm("Remove " + origin + "? Its visitors will be signed out and its origin will stop being allowed.")) return;
+      req("DELETE", API + "/" + id)
+        .then(function () { say("Removed.", "ok"); return load(); })
+        .catch(function (e) { say(e.message, "err"); });
+    }
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
