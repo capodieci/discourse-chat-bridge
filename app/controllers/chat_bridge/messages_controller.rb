@@ -35,6 +35,14 @@ module ChatBridge
       return render_bridge_error("not_allowed", 403) if !result.success?
 
       records = Array(result.messages)
+
+      # Without this, asking each message for its uploads is one query per
+      # message, so a page of thirty costs thirty round trips to render nothing
+      # in the common case where nobody attached anything.
+      if records.any?
+        ::ActiveRecord::Associations::Preloader.new(records: records, associations: :uploads).call
+      end
+
       edited = ChatBridge::Presenter.edited_ids_for(records)
       messages = records.map { |m| ChatBridge::Presenter.message(m, edited: edited.include?(m.id)) }
 

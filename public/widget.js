@@ -888,6 +888,9 @@
     ".ft .rec .dot{width:10px;height:10px;border-radius:50%;background:#d4351c;animation:cbpulse 1.2s ease-in-out infinite}",
     "@keyframes cbpulse{0%,100%{opacity:1}50%{opacity:.25}}",
     ".msg .txt audio{width:100%;max-width:260px;margin-top:4px;display:block}",
+    ".msg .txt img.att{max-width:100%;border-radius:8px;margin-top:4px;display:block}",
+    ".msg .txt a.file{display:inline-block;margin-top:4px;padding:6px 10px;border:1px solid #ddd;border-radius:8px;text-decoration:none;font-size:13px}",
+    ".msg .txt a.file span{color:#777}",
     ".ch{display:block;width:100%;text-align:left;border:none;background:transparent;padding:10px;border-radius:8px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:8px}",
     ".ch:hover{background:#f1f5f9}",
     ".ch .n{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
@@ -984,6 +987,41 @@
     );
   }
 
+  function humanSize(bytes) {
+    if (!bytes) return "";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  // Attachments arrive as data rather than markup, because Discourse chat does
+  // not put them in the message's HTML at all: a voice message has empty cooked
+  // HTML and its file on the side. Building the player here also means a future
+  // change to Discourse's own markup cannot silently break playback.
+  function renderUploads(uploads) {
+    if (!uploads || !uploads.length) return "";
+
+    return uploads
+      .map(function (u) {
+        if (u.kind === "audio") {
+          return (
+            '<audio controls preload="metadata" src="' + esc(u.url) + '"></audio>'
+          );
+        }
+        if (u.kind === "image") {
+          return (
+            '<a href="' + esc(u.url) + '" target="_blank" rel="noopener noreferrer nofollow">' +
+            '<img class="att" src="' + esc(u.url) + '" alt="' + esc(u.filename) + '"></a>'
+          );
+        }
+        return (
+          '<a class="file" href="' + esc(u.url) + '" target="_blank" rel="noopener noreferrer nofollow">' +
+          esc(u.filename) + " <span>" + esc(humanSize(u.filesize)) + "</span></a>"
+        );
+      })
+      .join("");
+  }
+
   function renderBody() {
     if (!state.token) {
       if (state.signingIn) {
@@ -1070,7 +1108,7 @@
           return (
             '<div class="msg">' + av + '<div class="c">' +
             '<div class="meta"><b>' + esc(m.user && m.user.username) + "</b> " + esc(when) + ed + "</div>" +
-            '<div class="txt">' + m.html + "</div></div></div>"
+            '<div class="txt">' + m.html + renderUploads(m.uploads) + "</div></div></div>"
           );
         })
         .join("")

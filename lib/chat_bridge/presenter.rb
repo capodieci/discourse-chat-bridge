@@ -85,6 +85,33 @@ module ChatBridge
     # (`last_editor_id ||= user_id`), so it is always present. Asking each record
     # for its revisions would be one query per message, so the caller resolves
     # them in a single query and passes the answer down.
+    # Discourse chat does not put attachments in cooked HTML. A message that is
+    # only a voice recording has an empty cooked string and its file hanging off
+    # the uploads association, so a presenter that reads cooked alone renders
+    # nothing at all. Attachments are therefore passed through as data and the
+    # widget builds the player, which also means we are not depending on
+    # whatever markup a future Discourse decides to generate.
+    def upload(record)
+      extension = record.extension.to_s.downcase
+      kind =
+        if ::FileHelper.supported_audio.include?(extension) || extension == "webm"
+          "audio"
+        elsif ::FileHelper.is_supported_image?(record.original_filename.to_s)
+          "image"
+        else
+          "file"
+        end
+
+      {
+        id: record.id,
+        url: ::UrlHelper.absolute(record.url),
+        filename: record.original_filename,
+        extension: extension,
+        filesize: record.filesize,
+        kind: kind,
+      }
+    end
+
     def message(record, edited: false)
       {
         id: record.id,
@@ -97,6 +124,7 @@ module ChatBridge
         edited: edited,
         edited_at: edited ? record.updated_at&.iso8601 : nil,
         deleted: record.deleted_at.present?,
+        uploads: Array(record.uploads).map { |u| upload(u) },
       }
     end
 
