@@ -13,6 +13,8 @@ docker exec app rails runner /var/www/discourse/plugins/discourse-chat-bridge/te
 
 ## Plan
 
+**All four sections are complete.** What follows is the record of what was built and why.
+
 Work these in order. Each is a complete deliverable: finish it, verify it in a browser where that applies, commit, push, then stop for review. Do not start the next one in the same pass.
 
 ### 1. Voice messages [DONE 2026-09-19]
@@ -74,15 +76,19 @@ Sound and appearance are kept in the browser rather than on the account, because
 
 `state.prefs = loadPrefs()` ran fifteen lines before `PREFS_KEY` was assigned. `var` hoisting meant the key was `undefined` at that point, so `localStorage.getItem(undefined)` returned null and the defaults won every time. Saving worked perfectly, which is exactly what made it invisible: the value was in storage, it was simply never read back. Only reloading the page in a browser showed it.
 
-### 4. Ready for other people to install
+### 4. Ready for other people to install [DONE 2026-09-19]
 
-This is the point of the project.
+- [x] `README.md` rewritten for a stranger: what it is, screenshots, install steps, the settings that must change, and a plain list of what it does **not** do, including no calls and no instant delivery, with the reason.
+- [x] `SECURITY.md`, leading with the trade rather than the mitigations. A registered site can act as your members, no configuration makes that safe because the access is the feature, and the mitigations reduce blast radius without removing it.
+- [x] `CONTRIBUTING.md` and `CHANGELOG.md`. Contributing records the two rules that earned their place, with the real bugs behind them.
+- [x] Compatibility table naming `2026.9.0` and `2026.8.0`, with the list of non public chat internals this depends on and `tests/loadcheck.rb` as the thing to run after an upgrade.
+- [x] `docs/announcement-draft.md`, in prose, saying plainly that delivery is not instant and why.
 
-- [ ] `README.md` rewritten for a stranger: what it is, a screenshot, the install steps, the settings that must change, and what it does not do.
-- [ ] `SECURITY.md` with the threat model in plain words, especially the CORS with credentials trade and the trust level gate.
-- [ ] `CONTRIBUTING.md` and `CHANGELOG.md`.
-- [ ] A compatibility note naming the Discourse version this is tested against, and `tests/loadcheck.rb` as the thing to run after an upgrade.
-- [ ] A draft announcement for meta.discourse.org, in prose rather than bullets.
+#### A code gap closed at the same time
+
+Decision 0011 said the released plugin must report a missing audio format rather than edit a forum wide upload policy. That had never been built: the extensions were added to this forum by hand and nothing would have told another administrator. The admin page now names exactly which formats are missing.
+
+Verified both ways in a browser: silent when all formats are allowed, and when `ogg` was temporarily removed it named `ogg` specifically. The setting was restored and confirmed byte for byte identical to the backup.
 
 ### Not in scope
 
