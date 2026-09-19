@@ -164,6 +164,49 @@ C.check("plain http is allowed for localhost, for development") do
   C.eq(s.valid?, true) == true ? true : s.errors.full_messages.join(", ")
 end
 
+# ------------------------------------------------------- appearance and toggles
+
+C.check("a valid hex accent is accepted, both short and long form") do
+  ok6 = ChatBridge::Site.new(name: "n", origin: "https://a.invalid", site_key: "k1", theme: { "accent" => "#0b6ecf" }).valid?
+  ok3 = ChatBridge::Site.new(name: "n", origin: "https://b.invalid", site_key: "k2", theme: { "accent" => "#abc" }).valid?
+  C.eq(ok6 && ok3, true)
+end
+
+C.check("an accent that is not a hex colour is refused, because it reaches a stylesheet") do
+  bad = ["red", "#12345", "url(x)", "#0b6ecf; background:url(//evil)", "rgb(1,2,3)", "expression(alert(1))"]
+  offenders =
+    bad.reject do |value|
+      !ChatBridge::Site.new(name: "n", origin: "https://c.invalid", site_key: "k3", theme: { "accent" => value }).valid?
+    end
+  offenders.empty? ? true : "accepted: #{offenders.inspect}"
+end
+
+C.check("position must be one of the two corners") do
+  good = ChatBridge::Site.new(name: "n", origin: "https://d.invalid", site_key: "k4", theme: { "position" => "bottom-left" }).valid?
+  bad = ChatBridge::Site.new(name: "n", origin: "https://e.invalid", site_key: "k5", theme: { "position" => "middle" }).valid?
+  C.eq(good && !bad, true)
+end
+
+C.check("an over long launcher label is refused") do
+  C.eq(ChatBridge::Site.new(name: "n", origin: "https://f.invalid", site_key: "k6", theme: { "launcher_label" => "x" * 61 }).valid?, false)
+end
+
+C.check("theme_settings fills in defaults and drops anything invalid") do
+  site = ChatBridge::Site.new(theme: { "accent" => "nonsense", "position" => "nonsense" })
+  out = site.theme_settings
+  C.eq([out["accent"], out["position"]], [nil, "bottom-right"])
+end
+
+C.check("features default to on, so sites created before they existed still work") do
+  out = ChatBridge::Site.new(features: nil).feature_settings
+  C.eq([out["direct_messages"], out["voice_messages"]], [true, true])
+end
+
+C.check("a feature can be turned off") do
+  site = ChatBridge::Site.new(features: { "voice_messages" => false })
+  C.eq([site.feature?("voice_messages"), site.feature?("direct_messages")], [false, true])
+end
+
 C.check("channel permission defaults to everything the visitor can see") do
   C.eq(ChatBridge::Site.new(allowed_channel_ids: nil).permits_channel?(7), true)
 end
