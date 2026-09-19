@@ -32,4 +32,4 @@ Language choice is settled per phase in `docs/decisions.md`, based on what the i
 7. Do not open new firewall ports without asking.
 8. If anything unexpected happens to the forum, stop all work, report, and propose a rollback.
 
-Host specific note: this server has 2 GB of RAM and is already using swap. Starting a Rails process inside the container can push it into an out of memory condition while the forum is live. Prefer reading source files and querying Postgres directly.
+Host note: check free memory before starting a Rails process inside the container. `rails runner` loads the whole application and can push a small instance into an out of memory condition while the forum is live. Reading source files and querying Postgres directly costs almost nothing and answers most questions. On a host with a gigabyte or less free, prefer them.

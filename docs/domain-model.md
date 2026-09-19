@@ -21,7 +21,7 @@ One row per website permitted to embed the widget.
 
 - `id`: integer, primary key
 - `site_key`: string, unique, the public identifier that appears in the script tag
-- `origin`: string, unique, exact origin including scheme, for example `https://zoobc.com`. Never a wildcard.
+- `origin`: string, unique, exact origin including scheme, for example `https://example.com`. Never a wildcard.
 - `name`: string, for the admin UI
 - `allowed_channel_ids`: integer array, nullable. Null means every channel the user can already see. A value restricts the widget to a subset.
 - `theme`: JSON, per site appearance
@@ -59,7 +59,7 @@ Expire after five minutes. Deleted on use.
 
 Because the widget is served from the forum and the popup opens on the forum, the popup is a first party context and can read the user's existing forum session directly. DiscourseConnect provider is therefore not needed, and neither is a provider secret.
 
-1. Widget on `zoobc.com` opens a popup to `https://zoobc.pro/chat-bridge/auth/start`, carrying the site key and a random state value.
+1. Widget on the embedding site opens a popup to `<forum>/chat-bridge/auth/start`, carrying the handshake id.
 2. The plugin looks up the site by key, checks the request origin matches the registered origin, and stores a nonce.
 3. If `current_user` is present, go to step 5. If not, redirect to the normal forum login with a return path back to this endpoint. The user sees the ordinary forum login, including any social logins already configured.
 4. After login the user returns to step 3 with a session.

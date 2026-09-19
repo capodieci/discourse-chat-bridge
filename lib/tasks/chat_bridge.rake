@@ -3,7 +3,7 @@
 # Administration for the chat bridge. Run inside the Discourse container:
 #
 #   cd /var/discourse && ./launcher enter app
-#   rake chat_bridge:site:add[Marketing,https://zoobc.com]
+#   rake chat_bridge:site:add[Marketing,https://example.com]
 #   rake chat_bridge:site:list
 #
 # Site keys are printed in full. They are identifiers, not secrets: a site key
