@@ -34,14 +34,19 @@ Done, written and verified against real forum data, but not yet deployed:
 - **`ChatBridge::Presenter`.** Small stable shapes for the widget, so no Discourse serializer is ever exposed to a third party site.
 - **`authorized_channel`** in the base controller. Channel ids from the browser are checked against both Discourse's guardian and the site's allow list on every request, and a refused channel returns the same answer as a missing one so the endpoint cannot be used to discover private channels.
 
+- **`public/widget.js`.** Vanilla JS, no build step, rendered entirely inside a Shadow DOM so host page CSS cannot reach it and its own CSS cannot leak out. Corner bubble with unread badge, channel list, message list, composer. Enter sends, Shift and Enter makes a new line. Light and dark both handled through `prefers-color-scheme`. Sign in opens a popup and the token arrives by `postMessage`, with the origin and the state value both checked before it is accepted. No cookies anywhere.
+- **Translations.** English is inlined so one script tag is enough with no extra round trip. `data-strings-url` loads another language, and any key missing from it falls back to English, so a partial translation degrades key by key instead of breaking the interface. `public/widget.strings.en.json` is the canonical table for translators and is verified to have exactly the same keys as the inlined one.
+- **`Transport`.** Present as an object with `start`, `stop` and `onEvents` and nothing else. The current implementation refetches recent history on an adaptive interval, 3 seconds while open, 12 closed, 30 when the tab is hidden. Crude but correct, and replaceable by MessageBus without any other part of the widget changing.
+
 Still to do:
 
-1. `public/widget.js`, vanilla JS in a Shadow DOM: corner bubble, panel, channel list, message list, composer.
-2. The `Transport` object with `start`, `stop`, `onEvents`, backed by MessageBus.
-3. A demo page on a different origin to prove the popup and CORS end to end.
-4. Tests for the sanitizer, the origin checks, and the permission checks.
+1. Replace the polling transport with a real MessageBus subscription.
+2. A demo page on a different origin to prove the popup and CORS end to end.
+3. Tests for the sanitizer, the origin checks, and the permission checks.
 
-The new endpoints are written but **not deployed**. The plugin running on the forum is still the Phase 1 version. Deploying is a `git pull` in the container plus a Rails restart, which needs approval.
+None of the Phase 2 work is **deployed**. The plugin running on the forum is still the Phase 1 version. Deploying is a `git pull` in the container plus a Rails restart, roughly ten seconds of interruption rather than a rebuild, and it needs approval.
+
+The Ruby has been verified against real forum data. The widget has only been syntax checked and audited by reading: it has never run in a browser, because that requires deploying. Treat it as unproven until it has.
 
 ## Decided
 
