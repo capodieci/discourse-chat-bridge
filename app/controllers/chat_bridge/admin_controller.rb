@@ -20,6 +20,7 @@ module ChatBridge
         bridge_enabled: SiteSetting.chat_bridge_enabled,
         chat_enabled: SiteSetting.chat_enabled,
         channels: available_channels,
+        missing_audio_extensions: missing_audio_extensions,
       )
     end
 
@@ -148,6 +149,21 @@ module ChatBridge
         .map { |c| { id: c.id, name: ChatBridge::Presenter.channel_title(c) } }
     rescue StandardError
       []
+    end
+
+    # Voice messages upload a recording, and Discourse refuses any extension not
+    # in authorized_extensions. Browsers record in different containers, so a
+    # forum missing one of these has voice messages that work in some browsers
+    # and fail in others, which is a miserable thing to diagnose.
+    #
+    # Reported rather than fixed. Editing a forum wide upload policy is not a
+    # plugin's decision to make on someone else's forum.
+    RECORDING_EXTENSIONS = %w[m4a webm ogg].freeze
+
+    def missing_audio_extensions
+      allowed =
+        SiteSetting.authorized_extensions.to_s.split("|").map { |e| e.strip.downcase }.reject(&:empty?)
+      RECORDING_EXTENSIONS.reject { |e| allowed.include?(e) }
     end
 
     def cors_list

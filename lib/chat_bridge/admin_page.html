@@ -57,6 +57,7 @@
   <p class="sub">Websites allowed to embed this forum's chat, and how the widget looks on each.</p>
 
   <div class="bar" id="status"></div>
+  <div id="audio-warning"></div>
   <div id="message"></div>
 
   <div class="warn">
@@ -120,11 +121,26 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
       state.positions = data.positions || ["bottom-right", "bottom-left"];
       state.widget_url = data.widget_url || "";
       state.channels = data.channels || [];
+      state.missing_audio = data.missing_audio_extensions || [];
       state.bridge_enabled = data.bridge_enabled;
       state.chat_enabled = data.chat_enabled;
       state.loading = false;
       render();
     }).catch(function (e) { say(e.message, "err"); });
+  }
+
+  function renderAudioWarning() {
+    var el = document.getElementById("audio-warning");
+    if (!state.missing_audio || !state.missing_audio.length) { el.innerHTML = ""; return; }
+
+    el.innerHTML =
+      '<div class="warn"><strong>Voice messages will fail in some browsers</strong>' +
+      "Browsers record in different containers, and this forum's authorized_extensions " +
+      "setting is missing " + esc(state.missing_audio.join(", ")) + ". Add them in Admin, " +
+      "Settings, search for authorized_extensions. Until then a voice message will work in " +
+      "some browsers and be rejected in others, which is hard to diagnose from the outside." +
+      "<br><br>Note that webm is a video container as well as an audio one, so allowing it " +
+      "widens uploads beyond voice messages.</div>";
   }
 
   function renderStatus() {
@@ -136,6 +152,7 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
     bits.push('<span class="pill">' + state.sites.length + " website" +
               (state.sites.length === 1 ? "" : "s") + "</span>");
     document.getElementById("status").innerHTML = bits.join("");
+    renderAudioWarning();
   }
 
   function channelOptions(s) {
