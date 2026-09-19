@@ -549,6 +549,19 @@
     ".err{background:#fdecea;color:#8b1a10;padding:8px 12px;font-size:13px}",
     ".btn{border:none;background:#0b6ecf;color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-size:14px;font-weight:600}",
     ".more{width:100%;border:1px solid #ddd;background:#fff;border-radius:8px;padding:6px;cursor:pointer;font-size:13px;color:#444;margin-bottom:8px}",
+    // On a phone a 358px card wastes most of the screen and leaves the composer
+    // cramped, so the panel takes the whole viewport instead and the bubble gets
+    // out of the way. dvh rather than vh, because vh on mobile browsers measures
+    // the viewport as if the address bar were hidden, which pushes the composer
+    // under it.
+    "@media (max-width: 480px){",
+    ".wrap.open{inset:0;bottom:0;right:0;gap:0}",
+    ".wrap.open .panel{width:100%;max-width:100%;height:100vh;height:100dvh;max-height:none;border-radius:0}",
+    ".wrap.open .bubble{display:none}",
+    ".wrap.open .hd{padding:14px;padding-top:max(14px,env(safe-area-inset-top))}",
+    ".wrap.open .ft{padding-bottom:max(8px,env(safe-area-inset-bottom))}",
+    ".wrap.open .hd button[data-act=close]{font-size:22px;padding:4px 10px}",
+    "}",
     "@media (prefers-color-scheme: dark){",
     ".panel{background:#1f2124;color:#e8e8e8}",
     ".ft{border-top-color:#33363a}",
@@ -687,6 +700,7 @@
     var oldTa = root.querySelector(".ft textarea");
     if (oldTa) draft = oldTa.value;
 
+    wrap.className = state.open ? "wrap open" : "wrap";
     wrap.innerHTML = (state.open ? renderPanel() : "") + renderBubble();
 
     var newBody = root.querySelector(".body");

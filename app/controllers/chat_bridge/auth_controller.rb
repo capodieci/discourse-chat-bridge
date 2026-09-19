@@ -60,6 +60,20 @@ module ChatBridge
 
     private
 
+    # Discourse serves a Content Security Policy with
+    # `script-src 'nonce-...' 'strict-dynamic'`. Under strict-dynamic, 'self'
+    # and host allow lists are ignored, so neither an inline script nor an
+    # external file will run without the nonce. Asking for the placeholder also
+    # registers the response header that makes the middleware add the nonce to
+    # the policy, so this must be called while rendering, not earlier.
+    #
+    # Getting this wrong is silent: the page renders, the script never executes,
+    # and the popup sits there saying it signed you in while the widget waits
+    # forever. Which is exactly what happened.
+    def csp_nonce
+      ::ContentSecurityPolicy.nonce_placeholder(response.headers, request_env: request.env)
+    end
+
     # Returns a page whose only job is to hand the token to the window that
     # opened it and then close. The postMessage target is the site's registered
     # origin, never "*", so the token cannot be read by any other page even if
@@ -73,43 +87,50 @@ module ChatBridge
         user: @user_payload,
       }
 
-      render html: handshake_html(payload, @site.origin).html_safe, content_type: "text/html"
+      render html: handshake_html(payload, @site.origin, csp_nonce).html_safe,
+             content_type: "text/html"
     end
 
     def render_auth_failure(code)
       message = I18n.t("chat_bridge.errors.#{code}", default: code.to_s.humanize)
+      nonce = ERB::Util.html_escape(csp_nonce)
       html = <<~HTML
         <!doctype html>
         <html lang="en"><head><meta charset="utf-8"><title>Chat sign in</title></head>
         <body style="font:14px system-ui,sans-serif;padding:2rem;color:#333">
         <p>#{ERB::Util.html_escape(message)}</p>
-        <p><button onclick="window.close()">Close</button></p>
+        <p><button id="close">Close</button></p>
+        <script nonce="#{nonce}">
+        document.getElementById("close").addEventListener("click", function () { window.close(); });
+        </script>
         </body></html>
       HTML
       render html: html.html_safe, content_type: "text/html", status: :forbidden
     end
 
-    def handshake_html(payload, target_origin)
+    def handshake_html(payload, target_origin, nonce)
+      safe_nonce = ERB::Util.html_escape(nonce)
       <<~HTML
         <!doctype html>
         <html lang="en">
         <head><meta charset="utf-8"><title>Signing in</title></head>
         <body style="font:14px system-ui,sans-serif;padding:2rem;color:#333">
-        <p>Signed in. You can close this window.</p>
-        <script>
+        <p id="status">Signing you in...</p>
+        <script nonce="#{safe_nonce}">
         (function () {
           var payload = #{payload.to_json};
           var target = #{target_origin.to_json};
+          var status = document.getElementById("status");
           try {
             if (window.opener) {
               window.opener.postMessage(payload, target);
+              status.textContent = "Signed in. You can close this window.";
               window.close();
             } else {
-              document.body.innerHTML =
-                '<p>Signed in. Please return to the previous tab.</p>';
+              status.textContent = "Signed in. Please return to the previous tab.";
             }
           } catch (e) {
-            document.body.innerHTML = '<p>Signed in, but this window could not talk to the page that opened it. Please close it and try again.</p>';
+            status.textContent = "Signed in, but this window could not reach the page that opened it. Please close it and try again.";
           }
         })();
         </script>
