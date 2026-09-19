@@ -63,3 +63,27 @@ What the installed source and a live request both show:
 ### The way out, when it is wanted
 
 Publish to a MessageBus channel whose name is itself the secret, for example `/chat-bridge/<32 random bytes>`, minted per widget session and delivered over the existing authenticated handshake. The widget subscribes anonymously, since an unguessable channel name needs no user identification, and the plugin republishes to it the chat events that session is allowed to see. That restores instant delivery, and the capability leaked by a compromised page is "read this one session's chat" rather than "be this user". It costs a `DiscourseEvent` hook and a fan out across active sessions, which is cheap at this scale. It is the right answer, it is simply more than a transport swap, and it should be a decision of its own rather than something slipped in here.
+
+## 0007: Widget caching, and which Cloudflare zone governs it
+
+- Date: 2026-09-19
+- Status: accepted, with one setting left deliberately unchanged
+- Context: `widget.js` was originally served from the plugin's `public` directory, which Discourse serves with `Cache-Control: public, max-age=31536000, immutable`. That is correct for fingerprinted asset filenames and wrong for a file whose URL has to stay stable in other people's HTML. It was observed live: Cloudflare returned `cf-cache-status: HIT` for a widget that had been fixed, and the embedding site kept running the broken one.
+- Decision: serve the widget from a controller route, `/chat-bridge/widget.js`, with `max-age=300`, `must-revalidate` and an ETag. Do not use the `public` directory for anything whose URL is part of the integration contract.
+- Consequences: integrators keep one unchanging script tag, caches still work, and a fix reaches browsers in minutes rather than never.
+
+### Which zone matters
+
+Only the forum's. The widget is served from the forum's hostname, so the forum's CDN zone decides how it is cached. The embedding sites' own CDN settings never see that request, because for them it is a third party script on another host.
+
+### The setting left alone
+
+Cloudflare's Browser Cache TTL on the forum zone rewrites the origin's `max-age=300` to `14400`, four hours. Left as it is on purpose. The catastrophic case, a year with `immutable`, is gone. What remains only means a browser that already holds the widget keeps it for an afternoon before checking again, which breaks nothing. It is worth changing to "Respect Existing Headers", ideally through a cache rule scoped to `/chat-bridge/*` rather than zone wide, on the day a bad release needs recalling quickly. That day is not now.
+
+## 0008: zoobc.net becomes its own origin later
+
+- Date: 2026-09-19
+- Status: noted, no action yet
+- Context: `zoobc.net` currently redirects to `zoobc.com`, so a visitor ends up on the `zoobc.com` origin and is already covered by that site's registration. Rob expects it to become its own server in a couple of months, at which point the redirect goes away.
+- Decision: register nothing now. A registration for an origin that never sends a request is one more entry widening the CORS allow list for no benefit.
+- Consequences: when it becomes its own server it needs one command, `rake chat_bridge:site:add[Net,https://zoobc.net]`, which prints the script tag and adds the origin to `cors_origins` in the same step. No downtime, no rebuild. Worth re-reading the security note in record 0005 at that point, since every added origin is another site whose compromise reaches forum accounts.
