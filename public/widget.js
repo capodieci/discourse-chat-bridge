@@ -871,8 +871,11 @@
 
   function renderPanel() {
     var ch = activeChannel();
-    var showBack =
-      state.view === "search" || (state.view === "messages" && state.channels.length > 1);
+    // Always offer a way back out of a conversation. Hiding it when there is
+    // only one channel seems tidy and is a trap: the channel list is also where
+    // New message lives, so a visitor following a single channel could never
+    // start a direct message.
+    var showBack = state.view === "search" || state.view === "messages";
     var title =
       state.view === "search"
         ? t("search_people")
