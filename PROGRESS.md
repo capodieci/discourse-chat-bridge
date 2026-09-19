@@ -15,17 +15,22 @@ docker exec app rails runner /var/www/discourse/plugins/discourse-chat-bridge/te
 
 Work these in order. Each is a complete deliverable: finish it, verify it in a browser where that applies, commit, push, then stop for review. Do not start the next one in the same pass.
 
-### 1. Voice messages
+### 1. Voice messages [DONE 2026-09-19]
 
-Rob has explicitly authorised changing `authorized_extensions`, which supersedes decision 0011. Record the change in `docs/server-changes.md` with the exact command to undo it.
+Verified end to end in a real browser with a fake microphone, and in the forum's own chat.
 
-- [ ] Add the audio formats `MediaRecorder` actually produces. Chrome and Firefox give WebM Opus, Safari gives MP4 AAC. Note in the record that `webm` is a video container too, so allowing it widens uploads beyond audio.
-- [ ] Record with `MediaRecorder`, picking a supported mime type per browser rather than assuming one.
-- [ ] A hold to record control, with a visible timer, a cancel gesture, and a sensible maximum length.
-- [ ] Upload through the bridge as the user, then attach to a chat message with `upload_ids`.
-- [ ] Play back inline in the widget, with duration and a progress bar.
-- [ ] Check how the message looks to a normal forum user in Discourse's own chat. A voice message that renders as a broken attachment in the forum is not finished.
-- [ ] Ask for the microphone at the moment of use, not on load, and explain what happens if it is refused.
+- [x] Audio formats added to `authorized_extensions`: `m4a`, `webm`, `ogg`, `oga`, `mp3`. Recorded in `docs/server-changes.md` with the undo command.
+- [x] Recording picks its format by preference rather than taking the first the browser offers. This turned out to matter: Discourse renders `m4a` and `ogg` as a player but `webm` is absent from its `FileHelper.supported_audio` list, so a webm recording arrives as a plain attachment. Chromium supports `audio/mp4` in `MediaRecorder`, verified rather than assumed, so in practice every browser produces a format the forum renders properly.
+- [x] A record control with a live timer, a cancel button and a five minute cap. **Click to start and click to stop, not hold to record.** Hold works badly on desktop and conflicts with text selection, and a five minute message would mean five minutes of holding a mouse button.
+- [x] Upload through `UploadCreator` as the visitor, so the file never leaves the process and the visitor's own extension policy and size limits apply. Attaching is restricted to uploads that visitor created, otherwise a client could attach any upload id on the forum, including someone else's private attachment.
+- [x] Playback inline, using the browser's own audio controls, which give duration and a progress bar for free and behave the way people expect.
+- [x] Confirmed in the forum's own chat: a voice message sent from the widget appears to ordinary members as a playable audio player with its duration, not a download link.
+- [x] Microphone requested at the moment of use, and every track stopped afterwards so the browser stops showing a recording indicator.
+
+#### Two bugs found by testing
+
+1. **The sanitizer stripped audio entirely.** `audio` and `source` were not in the allow list, so a voice message would have rendered as an empty bubble.
+2. **Attachments are not in cooked HTML at all.** A message that is only a recording has an empty `cooked` string and its file hanging off the `uploads` association, so a presenter reading `cooked` shows nothing. Attachments are now passed as data and the widget builds the player, which also means a future change to Discourse's markup cannot silently break playback.
 
 ### 2. Admin page, all per site settings
 
