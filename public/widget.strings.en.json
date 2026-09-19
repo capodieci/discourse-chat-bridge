@@ -33,5 +33,13 @@
   "no_people": "No one found by that name.",
   "search_people": "Search people",
   "search_placeholder": "Type a name",
-  "searching": "Searching"
+  "searching": "Searching",
+  "record": "Record a voice message",
+  "recording": "Recording",
+  "stop_send": "Stop and send",
+  "cancel": "Cancel",
+  "mic_denied": "Microphone access was refused. Allow it in your browser settings to send voice messages.",
+  "mic_unavailable": "This browser cannot record audio.",
+  "uploading": "Sending voice message",
+  "voice_too_long": "That recording reached the maximum length and was sent."
 }

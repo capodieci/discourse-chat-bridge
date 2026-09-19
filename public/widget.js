@@ -63,6 +63,14 @@
     searching: "Searching",
     no_people: "No one found by that name.",
     dm_start: "Message",
+    record: "Record a voice message",
+    recording: "Recording",
+    stop_send: "Stop and send",
+    cancel: "Cancel",
+    mic_denied: "Microphone access was refused. Allow it in your browser settings to send voice messages.",
+    mic_unavailable: "This browser cannot record audio.",
+    uploading: "Sending voice message",
+    voice_too_long: "That recording reached the maximum length and was sent.",
     error_dm_not_available: "Direct messages are not available from this website.",
     error_dm_refused: "That conversation could not be started. The person may not accept messages.",
     edited: "edited",
@@ -125,7 +133,10 @@
     view: "channels",
     searchTerm: "",
     searchResults: [],
-    searching: false
+    searching: false,
+    recording: false,
+    recordSeconds: 0,
+    uploading: false
   };
 
   try {
@@ -184,6 +195,8 @@
     if (code === "chat_disabled") return t("error_chat_disabled");
     if (code === "dm_not_available") return t("error_dm_not_available");
     if (code === "dm_refused" || code === "no_recipients") return t("error_dm_refused");
+    if (code === "upload_type") return t("mic_unavailable");
+    if (code === "upload_too_large" || code === "voice_too_long") return t("voice_too_long");
     return t("error_generic");
   }
 
@@ -522,6 +535,190 @@
       });
   }
 
+  /* ---------------------------------------------------------------- voice */
+
+  var recorder = null;
+  var recordStream = null;
+  var recordChunks = [];
+  var recordTimer = null;
+  var recordCancelled = false;
+
+  var MAX_RECORD_SECONDS = 300;
+
+  // Format preference matters more than it looks. Discourse renders m4a and ogg
+  // as an audio player for ordinary forum users; webm it treats as a plain
+  // attachment, because webm is absent from its supported audio list. So webm is
+  // a last resort rather than the obvious first choice it appears to be.
+  function pickMimeType() {
+    if (!window.MediaRecorder) return null;
+    var preferred = [
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+      "audio/webm;codecs=opus",
+      "audio/webm"
+    ];
+    for (var i = 0; i < preferred.length; i++) {
+      try {
+        if (MediaRecorder.isTypeSupported(preferred[i])) return preferred[i];
+      } catch (e) {
+        /* isTypeSupported can throw on some older browsers */
+      }
+    }
+    return null;
+  }
+
+  function startRecording() {
+    if (state.recording || state.uploading) return;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      state.error = t("mic_unavailable");
+      render();
+      return;
+    }
+
+    var mime = pickMimeType();
+    if (!mime) {
+      state.error = t("mic_unavailable");
+      render();
+      return;
+    }
+
+    // Asked for at the moment of use rather than on load, so the browser's
+    // permission prompt arrives with an obvious cause.
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then(function (stream) {
+        recordStream = stream;
+        recordChunks = [];
+        recordCancelled = false;
+
+        recorder = new MediaRecorder(stream, { mimeType: mime });
+        recorder.ondataavailable = function (event) {
+          if (event.data && event.data.size > 0) recordChunks.push(event.data);
+        };
+        recorder.onstop = function () {
+          releaseMicrophone();
+          if (recordCancelled) {
+            recordChunks = [];
+            return;
+          }
+          var blob = new Blob(recordChunks, { type: mime });
+          recordChunks = [];
+          if (blob.size > 0) uploadVoice(blob, mime);
+        };
+
+        recorder.start();
+        state.recording = true;
+        state.recordSeconds = 0;
+        state.error = null;
+        render();
+
+        recordTimer = setInterval(function () {
+          state.recordSeconds = state.recordSeconds + 1;
+          if (state.recordSeconds >= MAX_RECORD_SECONDS) {
+            state.error = t("voice_too_long");
+            stopRecording(false);
+            return;
+          }
+          render();
+        }, 1000);
+      })
+      .catch(function () {
+        state.error = t("mic_denied");
+        render();
+      });
+  }
+
+  function stopRecording(cancel) {
+    if (!state.recording) return;
+    recordCancelled = !!cancel;
+    clearInterval(recordTimer);
+    recordTimer = null;
+    state.recording = false;
+    state.recordSeconds = 0;
+    render();
+
+    try {
+      if (recorder && recorder.state !== "inactive") recorder.stop();
+      else releaseMicrophone();
+    } catch (e) {
+      releaseMicrophone();
+    }
+  }
+
+  // The browser keeps showing a recording indicator until every track is
+  // stopped, so leaving them running would tell the visitor they are still being
+  // listened to when they are not.
+  function releaseMicrophone() {
+    if (!recordStream) return;
+    try {
+      recordStream.getTracks().forEach(function (track) {
+        track.stop();
+      });
+    } catch (e) {
+      /* nothing useful to do */
+    }
+    recordStream = null;
+    recorder = null;
+  }
+
+  function extensionFor(mime) {
+    if (mime.indexOf("mp4") !== -1) return "m4a";
+    if (mime.indexOf("ogg") !== -1) return "ogg";
+    if (mime.indexOf("mpeg") !== -1) return "mp3";
+    return "webm";
+  }
+
+  function uploadVoice(blob, mime) {
+    state.uploading = true;
+    render();
+
+    var form = new FormData();
+    form.append("file", blob, "voice-message." + extensionFor(mime));
+
+    var headers = {};
+    if (state.token) headers["Authorization"] = "Bearer " + state.token;
+
+    // Deliberately not using api(), which sends JSON. The body here is
+    // multipart, and Content-Type must be left unset so the browser can add the
+    // boundary itself.
+    fetch(API + "/uploads/create", {
+      method: "POST",
+      mode: "cors",
+      credentials: "omit",
+      headers: headers,
+      body: form
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return { ok: false, error: { code: "error_generic" } };
+        });
+      })
+      .then(function (json) {
+        if (!json || !json.ok) {
+          var code = (json && json.error && json.error.code) || "error_generic";
+          throw Object.assign(new Error(code), { code: code });
+        }
+        return api("/messages/send", {
+          channel_id: state.activeChannelId,
+          upload_ids: [json.data.upload.id],
+          client_nonce: String(Date.now()) + String(Math.random()).slice(2)
+        });
+      })
+      .then(function (data) {
+        state.uploading = false;
+        mergeMessages([data.message]);
+        render();
+        scrollToBottom();
+      })
+      .catch(function (err) {
+        state.uploading = false;
+        state.error = errorMessage(err.code);
+        render();
+      });
+  }
+
   /* ------------------------------------------------------------ transport
    *
    * An object with start, stop, onEvents and onUnread, and nothing else, so the
@@ -682,6 +879,15 @@
     ".ft textarea:focus{outline:2px solid #0b6ecf;outline-offset:-1px}",
     ".ft button{border:none;background:#0b6ecf;color:#fff;border-radius:8px;padding:0 14px;cursor:pointer;font-size:14px;font-weight:600}",
     ".ft button:disabled{background:#9bb9d8;cursor:default}",
+    ".ft button.mic{background:transparent;color:#0b6ecf;padding:0 8px;display:flex;align-items:center}",
+    ".ft button.mic:hover{color:#0a5fb3}",
+    ".ft button.mic svg{width:22px;height:22px;fill:currentColor}",
+    ".ft button.ghost{background:transparent;color:#666;font-weight:500}",
+    ".ft.recording{align-items:center}",
+    ".ft .rec{flex:1;display:flex;align-items:center;gap:8px;font-size:14px;color:#444;padding-left:4px}",
+    ".ft .rec .dot{width:10px;height:10px;border-radius:50%;background:#d4351c;animation:cbpulse 1.2s ease-in-out infinite}",
+    "@keyframes cbpulse{0%,100%{opacity:1}50%{opacity:.25}}",
+    ".msg .txt audio{width:100%;max-width:260px;margin-top:4px;display:block}",
     ".ch{display:block;width:100%;text-align:left;border:none;background:transparent;padding:10px;border-radius:8px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:8px}",
     ".ch:hover{background:#f1f5f9}",
     ".ch .n{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
@@ -730,6 +936,8 @@
     ".ch:hover{background:#2a2d31}",
     ".search input{background:#2a2d31;border-color:#3a3d42;color:#e8e8e8}",
     ".ch .sub{color:#9a9a9a}",
+    ".ft .rec{color:#ccc}",
+    ".ft button.ghost{color:#aaa}",
     ".msg .meta b{color:#e8e8e8}",
     ".msg .txt pre,.msg .txt code{background:#2a2d31}",
     ".note{color:#b4b4b4}.note h3{color:#e8e8e8}",
@@ -869,6 +1077,39 @@
     );
   }
 
+  function mmss(total) {
+    var m = Math.floor(total / 60);
+    var sec = total % 60;
+    return m + ":" + (sec < 10 ? "0" : "") + sec;
+  }
+
+  function renderComposer() {
+    if (state.recording) {
+      return (
+        '<div class="ft recording">' +
+        '<span class="rec"><span class="dot"></span>' + esc(t("recording")) + " " +
+        esc(mmss(state.recordSeconds)) + "</span>" +
+        '<button class="ghost" data-act="reccancel">' + esc(t("cancel")) + "</button>" +
+        '<button data-act="recstop">' + esc(t("stop_send")) + "</button></div>"
+      );
+    }
+
+    if (state.uploading) {
+      return '<div class="ft"><span class="rec">' + esc(t("uploading")) + "</span></div>";
+    }
+
+    return (
+      '<div class="ft">' +
+      '<textarea rows="1" placeholder="' + esc(t("composer_placeholder")) + '"></textarea>' +
+      '<button class="mic" data-act="record" aria-label="' + esc(t("record")) + '" title="' +
+      esc(t("record")) + '">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/>' +
+      '<path d="M19 12a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12z"/></svg></button>' +
+      '<button data-act="send"' + (state.sending ? " disabled" : "") + ">" +
+      esc(state.sending ? t("sending") : t("send")) + "</button></div>"
+    );
+  }
+
   function renderPanel() {
     var ch = activeChannel();
     // Always offer a way back out of a conversation. Hiding it when there is
@@ -894,11 +1135,7 @@
       "</div>" +
       (state.error ? '<div class="err">' + esc(state.error) + "</div>" : "") +
       '<div class="body">' + renderBody() + "</div>" +
-      (canCompose
-        ? '<div class="ft"><textarea rows="1" placeholder="' + esc(t("composer_placeholder")) + '"></textarea>' +
-          '<button data-act="send"' + (state.sending ? " disabled" : "") + ">" +
-          esc(state.sending ? t("sending") : t("send")) + "</button></div>"
-        : "") +
+      (canCompose ? renderComposer() : "") +
       "</div>"
     );
   }
@@ -1000,6 +1237,12 @@
       if (find) find.focus();
     } else if (act === "older") {
       loadOlder();
+    } else if (act === "record") {
+      startRecording();
+    } else if (act === "recstop") {
+      stopRecording(false);
+    } else if (act === "reccancel") {
+      stopRecording(true);
     } else if (act === "send") {
       var ta = root.querySelector(".ft textarea");
       if (ta) {

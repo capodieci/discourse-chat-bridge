@@ -31,4 +31,7 @@ ChatBridge::Engine.routes.draw do
 
   match "/api/users/search" => "users#search", :via => %i[post options]
   match "/api/dm/open" => "users#open_dm", :via => %i[post options]
+
+  # Multipart rather than JSON, because a file has to arrive as multipart.
+  match "/api/uploads/create" => "uploads#create", :via => %i[post options]
 end

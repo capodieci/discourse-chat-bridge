@@ -49,13 +49,28 @@ module ChatBridge
       return if channel.nil?
 
       text = params[:text].to_s
-      return render_bridge_error("empty_message", 422) if text.strip.empty?
+      upload_ids = Array(params[:upload_ids]).map(&:to_i).reject(&:zero?).first(10)
+
+      # A voice message has no text, so emptiness is only an error when there is
+      # nothing attached either.
+      if text.strip.empty? && upload_ids.empty?
+        return render_bridge_error("empty_message", 422)
+      end
+
+      # Only uploads this visitor created may be attached. Without this check a
+      # client could attach any upload id on the forum, including someone else's
+      # private attachment, and have it rendered into a channel.
+      if upload_ids.present?
+        owned = ::Upload.where(id: upload_ids, user_id: bridge_user.id).pluck(:id)
+        return render_bridge_error("upload_not_yours", 403) if owned.sort != upload_ids.sort
+      end
 
       result =
         ::Chat::CreateMessage.call(
           params: {
             chat_channel_id: channel.id.to_s,
             message: text,
+            upload_ids: upload_ids.presence,
             in_reply_to_id: params[:in_reply_to_id].presence&.to_s,
             thread_id: params[:thread_id].presence&.to_s,
             # Discourse deduplicates on this, so a retried send after a dropped

@@ -144,15 +144,16 @@ module ChatBridge
       render json: { ok: true, data: data }
     end
 
-    def render_bridge_error(code, status)
-      render json: {
-               ok: false,
-               error: {
-                 code: code,
-                 message: I18n.t("chat_bridge.errors.#{code}", default: code.to_s.humanize),
-               },
-             },
-             status: status
+    def render_bridge_error(code, status, detail: nil)
+      error = {
+        code: code,
+        message: I18n.t("chat_bridge.errors.#{code}", default: code.to_s.humanize),
+      }
+      # Discourse's own rejection reason, when there is one, is more useful than
+      # our generic sentence. Passed through rather than swallowed.
+      error[:detail] = detail if detail.present?
+
+      render json: { ok: false, error: error }, status: status
     end
   end
 end

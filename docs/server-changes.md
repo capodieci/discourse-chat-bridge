@@ -54,3 +54,16 @@ That removes the plugin and disables CORS. It does not downgrade Discourse, beca
 - Registered `https://zoobc.network` as the third embedding site. `cors_origins` is now `https://zoobc.com|https://zoobc.foundation|https://zoobc.network`.
 - Verified by live request that each of the three origins is reflected back to itself, and that an unregistered origin is not.
 - `https://zoobc.net` is planned but not added.
+
+## 2026-09-19, audio upload formats
+
+- What changed: added `m4a`, `webm`, `ogg`, `oga` and `mp3` to the `authorized_extensions` site setting, so voice messages can be uploaded from every browser rather than only Safari.
+- Why: the setting previously contained no audio format at all. Chrome and Edge record WebM Opus, Firefox records Ogg Opus, Safari records MP4 AAC. Only `mp4` was allowed, so Safari would have worked by accident and every other browser would have been rejected.
+- Authorised by Rob explicitly, for this forum. The released plugin does not do this to other people's forums, it reports the gap instead. See the amendment to decision 0011.
+- Command used: a `rails runner` script that appends only the missing values, leaving the existing list untouched.
+- Side effect worth knowing: `webm` is a video container as well as an audio one, so this widens uploads beyond voice messages. A storage and moderation consideration rather than a security one.
+- To undo, in `rails runner`:
+
+```ruby
+SiteSetting.authorized_extensions = "jpg|jpeg|png|gif|heic|heif|webp|avif|svg|jxl|mp4|txt|log|json|html"
+```

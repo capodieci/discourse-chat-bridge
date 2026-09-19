@@ -18,12 +18,16 @@ module ChatBridge
       blockquote
       ul ol li
       a img
+      audio source
       h1 h2 h3 h4 h5 h6
       table thead tbody tr th td
       hr
     ].freeze
 
-    ALLOWED_ATTRIBUTES = %w[href src alt title class width height colspan rowspan].freeze
+    ALLOWED_ATTRIBUTES = %w[
+      href src alt title class width height colspan rowspan
+      controls preload type
+    ].freeze
 
     # Nodes whose text content must go with them. The safe list sanitizer strips
     # the tag but keeps what is inside, so "<script>alert(1)</script>" would
@@ -74,6 +78,16 @@ module ChatBridge
       # An image whose src was refused above would render as a broken image icon,
       # so the element goes with it.
       final.css("img").each { |img| img.remove if img["src"].blank? }
+
+      # Audio always gets controls, because a player with no controls is an
+      # invisible element the visitor cannot start. An audio element with no
+      # source, its src having been refused above, is removed for the same reason
+      # a broken image is.
+      final.css("audio").each do |audio|
+        audio["controls"] = "controls"
+        audio["preload"] = "metadata"
+        audio.remove if audio["src"].blank? && audio.css("source[src]").empty?
+      end
 
       # Links leave our control entirely, so they open in a new tab and are told
       # not to leak the opener reference or the referrer. A link whose href was

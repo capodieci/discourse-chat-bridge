@@ -17,3 +17,8 @@ en:
       dm_not_available: "Direct messages are not available from this website."
       no_recipients: "Choose someone to message first."
       dm_refused: "That conversation could not be started. The person may not accept messages, or may not be allowed to chat."
+      upload_missing: "No recording was received."
+      upload_type: "That audio format is not supported."
+      upload_too_large: "That recording is too large."
+      upload_rejected: "The forum refused that upload."
+      upload_not_yours: "That attachment does not belong to you."
