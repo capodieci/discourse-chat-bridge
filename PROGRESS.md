@@ -54,13 +54,25 @@ A temporary administrator was created for this, used, and deleted. Editing accen
 
 The single channel select was added after the browser session and its logic verified directly rather than through the page: the channel list and the pinning behaviour were confirmed, but that one control has not been clicked in a browser. It uses the same mechanism as the five fields that were.
 
-### 3. What the visitor can change
+### 3. What the visitor can change [DONE 2026-09-19]
 
-Small, and worth doing because the alternative is people asking Rob.
+A settings panel behind a gear in the panel header. Verified in a browser.
 
-- [ ] A settings menu in the panel: notification sound on or off, and light or dark instead of following the system.
-- [ ] Per viewer preferences live in `localStorage`, wrapped in try/catch, because they are conveniences and must not break the widget when storage is blocked.
-- [ ] Mute a channel, which is a real Discourse membership setting rather than a widget one, so it follows the person back to the forum.
+- [x] Notification sound on or off, and light or dark instead of following the system. Verified: forcing dark while the browser reported a light system preference turned the panel background to `rgb(31, 33, 36)` while the host page stayed light, which also demonstrates the Shadow DOM isolation.
+- [x] Per viewer preferences in `localStorage`, wrapped in try/catch, and confirmed to survive a reload.
+- [x] Mute a channel. Stored on the account rather than in the browser, because it is a real Discourse membership setting. Verified in the database afterwards: `channel=General following=true muted=true`.
+
+#### Notes on the choices
+
+The notification sound is synthesised with the Web Audio API rather than shipped as a file. No request, no asset to cache or go stale, and nothing that can be blocked as a third party resource on the host page. It plays once when enabled, so the choice is audible rather than a claim, and only for messages from someone else.
+
+Appearance required moving the widget's palette to custom properties and defining it twice: once under the media query, skipped when the visitor has chosen light, and once for an explicit dark choice. A media query cannot be overridden by a class, so a single definition would have made the setting a one way door.
+
+Sound and appearance are kept in the browser rather than on the account, because they are preferences about a device. An account level setting would follow someone onto a shared computer. Muting is the opposite case and is deliberately on the account, so it follows the person back to the forum.
+
+#### The bug this found
+
+`state.prefs = loadPrefs()` ran fifteen lines before `PREFS_KEY` was assigned. `var` hoisting meant the key was `undefined` at that point, so `localStorage.getItem(undefined)` returned null and the defaults won every time. Saving worked perfectly, which is exactly what made it invisible: the value was in storage, it was simply never read back. Only reloading the page in a browser showed it.
 
 ### 4. Ready for other people to install
 
