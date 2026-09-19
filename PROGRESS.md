@@ -2,26 +2,36 @@
 
 ## Done
 
-- Phase 0, discovery. Read-only inspection of the host and of the installed Discourse source. Delivered `docs/discovery-report.md`. The server was not modified in any way.
+- Phase 0, discovery. Delivered `docs/discovery-report.md`, with host specifics kept out of the public repository in `docs/local/`.
 - Architecture settled: a Discourse plugin, not an external bridge. See `docs/decisions.md` record 0002.
-- Domain model written for the chosen architecture. See `docs/domain-model.md`. Three tables instead of the twelve the brief anticipated.
+- Domain model written. Three tables instead of the twelve the brief anticipated. See `docs/domain-model.md`.
+- Phase 1 complete and installed. The plugin is live on the forum.
 
-- RAM resized to 4 GB and disk grown by 20 GB. Verified: 1.8 GB available, swap back to zero, 60 G free, forum returning HTTP 200. Recorded in `docs/server-changes.md`.
-- Phase 1 code written. Repository restructured to the Discourse plugin convention, with `plugin.rb` at the root so the repo can be cloned directly by `app.yml`. Fourteen Ruby files, all syntax checked against the container's own Ruby interpreter.
+## Phase 1 result, verified on 2026-09-19
 
-## Next: install the plugin
+- Backup taken and verified before any change. `app.yml` backed up, then changed by exactly two additions.
+- One rebuild. Forum verified healthy afterwards: homepage, `/latest`, `/login`, `/chat`, `/about` all 200. Data intact at 8 users, 319 posts, 261 topics.
+- Plugin cloned from GitHub by the container, three migrations ran, `GET /chat-bridge/health` returns 200.
+- CORS verified by request. A registered origin gets the plugin's own strict headers. An unregistered origin is refused at the application layer.
+- `auth/start` verified: an unknown site key returns 403, a valid one redirects an anonymous visitor to the forum login.
+- Two sites registered: `https://zoobc.com` and `https://zoobc.foundation`.
 
-Waiting on Rob's explicit approval for the rebuild, per safety rule 2. The exact plan:
+## Known issues and debts
 
-1. Take a Discourse backup and confirm the file exists on disk.
-2. Copy `app.yml` to a timestamped backup beside it.
-3. Add the plugin clone hook and `DISCOURSE_ENABLE_CORS: true` to `app.yml`.
-4. `./launcher rebuild app`, once. This is the only forum downtime in the project.
-5. Verify the forum is exactly as before: homepage, login, chat, live updates, uploads.
-6. Turn on `chat_bridge_enabled`, set `cors_origins`, register the first site with `rake chat_bridge:site:add`.
-7. Confirm `GET /chat-bridge/health` answers.
+1. The forum was upgraded from `2026.8.0` to `2026.9.0` as a side effect of the rebuild, because `./launcher rebuild` always pulls the latest image. This was not flagged before approval. It should be flagged every future time.
+2. Three August backups were lost to the retention policy after the backup command was run three times. Suggested remedy in `docs/server-changes.md`, not yet applied, awaiting Rob.
+3. `DISCOURSE_ENABLE_CORS` is global, not scoped to the plugin. Every Discourse endpoint now accepts cross origin requests from the two listed sites with credentials. See decision 0005.
+4. The plugin ships `CLAUDE.md`, `PROGRESS.md` and `docs/` into the container, because the repository root is the plugin root. Harmless, but untidy for a public release. Worth cleaning up before Phase 6.
 
-Rollback if anything goes wrong: restore the timestamped `app.yml` and rebuild again. The plugin adds three new tables and touches no existing ones, so removing it cannot damage forum data.
+## Next: Phase 2, the widget
+
+The server side works and is reachable. What does not exist yet is anything a visitor can see.
+
+1. `public/widget.js`, vanilla JS in a Shadow DOM: corner bubble, panel, channel list, message list, composer.
+2. The `Transport` object with `start`, `stop`, `onEvents`, backed by MessageBus.
+3. Bridge endpoints the widget needs: channel list, message history, send, mark read.
+4. A demo page on a different origin to prove the popup and CORS end to end.
+5. Tests for the sanitizer, the origin checks, and the permission checks.
 
 ## Decided
 
