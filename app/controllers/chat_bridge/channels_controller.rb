@@ -25,6 +25,43 @@ module ChatBridge
       render_bridge_ok(channels: channels)
     end
 
+    # A deliberately cheap change check, called often by the widget's transport.
+    #
+    # It answers one question only: has anything happened. Two indexed queries,
+    # no serializers, no message bodies, no per channel counting. The widget
+    # compares last_message_id against last_read_message_id itself and only asks
+    # for actual messages when something moved. Exact unread counts come from
+    # #list, which the widget calls when the panel is opened, not on a timer.
+    def updates
+      rate_limit_bridge!("updates", 120, 1.minute)
+      return if performed?
+
+      memberships =
+        ::Chat::UserChatChannelMembership.where(user_id: bridge_user.id, following: true).pluck(
+          :chat_channel_id,
+          :last_read_message_id,
+        )
+
+      return render_bridge_ok(channels: []) if memberships.empty?
+
+      last_read = memberships.to_h
+      ids = last_read.keys.select { |id| bridge_site.permits_channel?(id) }
+
+      channels =
+        ::Chat::Channel
+          .where(id: ids)
+          .pluck(:id, :last_message_id)
+          .map do |id, last_message_id|
+            {
+              id: id,
+              last_message_id: last_message_id,
+              last_read_message_id: last_read[id],
+            }
+          end
+
+      render_bridge_ok(channels: channels)
+    end
+
     def mark_read
       channel_id = params[:channel_id].to_i
       message_id = params[:message_id].presence&.to_i

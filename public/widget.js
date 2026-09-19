@@ -253,6 +253,7 @@
           render();
           return;
         }
+        transport.start(null);
         return loadChannels();
       })
       .catch(function (err) {
@@ -368,38 +369,81 @@
 
   /* ------------------------------------------------------------ transport
    *
-   * Deliberately an object with start, stop and onEvents, and nothing else.
-   * This implementation refetches recent history on an interval, which is crude
-   * but correct. It is replaced by a MessageBus subscription without any other
-   * part of the widget changing.
+   * An object with start, stop, onEvents and onUnread, and nothing else, so the
+   * mechanism underneath can be replaced without touching the rest of the file.
+   *
+   * It polls, and that is a considered choice rather than a shortcut. Discourse
+   * publishes chat events to MessageBus, but a browser on another domain cannot
+   * authenticate to /message-bus: its CORS policy allows only four request
+   * headers, none of which carry a bearer token, and the query parameter route
+   * into Discourse's auth is restricted to RSS and calendar endpoints. The one
+   * mechanism that does work, X-Shared-Session-Key, hands the embedding page a
+   * credential equivalent to a forum session, which is a worse trade than
+   * polling. See docs/decisions.md record 0006.
+   *
+   * So this polls something deliberately tiny: two integers per channel, and it
+   * only asks for messages when one of them moves.
    */
 
   var transport = (function () {
     var timer = null;
     var channelId = null;
     var handler = null;
+    var unreadHandler = null;
+    var lastSeenMessageId = null;
+    var failures = 0;
 
     function interval() {
+      // Backing off on repeated failures matters: if the forum is having a bad
+      // time, a widget on several sites hammering it every three seconds makes
+      // that worse rather than better.
+      if (failures > 0) return Math.min(3000 * Math.pow(2, failures), 60000);
       if (document.hidden) return 30000;
       return state.open ? 3000 : 12000;
     }
 
+    // Asks only whether anything changed. The answer is two integers per
+    // channel, so this stays cheap enough to run on a short interval. Messages
+    // are only fetched when one of those integers actually moved.
     function tick() {
-      if (!channelId || !state.token) return;
-      api("/messages/history", { channel_id: channelId, limit: 30 })
+      if (!state.token) return schedule();
+
+      api("/channels/updates")
         .then(function (data) {
-          var incoming = data.messages || [];
-          var known = {};
-          state.messages.forEach(function (m) {
-            known[m.id] = true;
+          failures = 0;
+          var channels = data.channels || [];
+          var unreadElsewhere = false;
+          var activeMoved = false;
+
+          channels.forEach(function (c) {
+            var hasUnread = c.last_message_id && c.last_message_id > (c.last_read_message_id || 0);
+
+            if (c.id === channelId) {
+              if (c.last_message_id && c.last_message_id !== lastSeenMessageId) {
+                activeMoved = true;
+                lastSeenMessageId = c.last_message_id;
+              }
+            } else if (hasUnread) {
+              unreadElsewhere = true;
+            }
           });
-          var fresh = incoming.filter(function (m) {
-            return !known[m.id];
+
+          if (unreadHandler) unreadHandler(unreadElsewhere);
+          if (!activeMoved || !channelId) return;
+
+          return api("/messages/history", { channel_id: channelId, limit: 30 }).then(function (res) {
+            var known = {};
+            state.messages.forEach(function (m) {
+              known[m.id] = true;
+            });
+            var fresh = (res.messages || []).filter(function (m) {
+              return !known[m.id];
+            });
+            if (fresh.length && handler) handler(fresh);
           });
-          if (fresh.length && handler) handler(fresh);
         })
         .catch(function () {
-          /* transient failures are expected, the next tick retries */
+          failures = failures + 1;
         })
         .then(function () {
           schedule();
@@ -413,7 +457,9 @@
 
     return {
       start: function (id) {
-        channelId = id;
+        channelId = id || null;
+        lastSeenMessageId = null;
+        failures = 0;
         schedule();
       },
       stop: function () {
@@ -423,9 +469,23 @@
       },
       onEvents: function (fn) {
         handler = fn;
+      },
+      onUnread: function (fn) {
+        unreadHandler = fn;
       }
     };
   })();
+
+  transport.onUnread(function (hasUnread) {
+    // While the panel is shut the badge is a dot rather than a number, because
+    // an exact count would cost a query per channel on every tick. The real
+    // count arrives from /channels/list the moment the panel is opened.
+    var next = hasUnread ? Math.max(state.unread, 1) : 0;
+    if (next !== state.unread && !state.open) {
+      state.unread = next;
+      render();
+    }
+  });
 
   transport.onEvents(function (messages) {
     var atBottom = isAtBottom();
