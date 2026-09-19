@@ -2,45 +2,30 @@
 
 ## Live and working
 
-The plugin is deployed on `zoobc.pro` and the widget has been driven end to end in headless Chromium from another origin, including the cold path where the visitor has no forum session and logs in through the forum's own login form.
+The plugin is deployed on `zoobc.pro`. The widget signs visitors in, lists channels, shows history, sends messages, and now finds people and starts direct messages. Rob and another member have held a real conversation through it.
 
-## Phase 2 verification, 2026-09-19
+## Direct messages, added 2026-09-19
 
-Both sign in paths confirmed working, on desktop and at phone width:
+There was previously no way to message a specific person: the widget only showed channels the visitor already followed.
 
-- Already signed in to the forum: popup opens, authorises, closes itself, widget signs in.
-- **Not signed in**: popup goes to the forum login, the visitor logs in, the popup returns, authorises and closes, and the widget signs in. This is the path most visitors take, and it was completely broken.
-- Channel list, message history with real content, composer, send, mobile fullscreen.
-- 50 self checks and the load pre-flight both clean.
+- **Finding people** goes through `Chat::SearchChatable` with the visitor's guardian, so results are exactly the people that visitor may see. The bridge never queries the user table itself, so it cannot become a way to enumerate the membership.
+- **Opening a conversation** uses `Chat::CreateDirectMessageChannel` with `upsert`, so asking twice returns the existing conversation instead of creating a duplicate.
+- A site with `allowed_channel_ids` set does **not** get direct messages. A DM channel is created on demand and can never appear in an allow list written in advance, and silently permitting it would widen a configuration that was deliberately narrowed.
+- Inherited limits, surfaced rather than hidden: `direct_message_enabled_groups` is trust level 1, the same gate as chat, and `chat_max_direct_message_users` caps a conversation at 20 people.
 
-## The four production bugs found by testing against the real thing
+Verified in a browser end to end: New message, typing a name character by character, results with avatars, opening the conversation, sending, and the message rendering back.
 
-1. **Content Security Policy blocked the handshake script.** Discourse serves `script-src` with a nonce and `'strict-dynamic'`, under which `'self'` and host allow lists are ignored, so neither an inline script nor an external file runs without the nonce. The popup rendered "Signed in, you can close this window" from static HTML while its script never executed. The page now reports success only after the script has run, so this class of failure is visible rather than a page lying about having worked.
-2. **`window.opener` was severed.** Discourse serves `Cross-Origin-Opener-Policy: same-origin-allow-popups`, which cuts the opener when the opening page is on another origin, permanently. Every visitor not already signed in passes through `/login`, so `postMessage` could never work for the common case.
-3. **The COOP override had to be an `after_action`.** Discourse sets that header in an `after_action` gated on `spa_boot_request?`, true for any plain GET, so setting it in a `before_action` was silently overwritten.
-4. **Cloudflare was caching `widget.js` for a year.** Discourse serves plugin public assets with `max-age=31536000, immutable`, correct for fingerprinted filenames and wrong for a file whose URL must stay stable. `cf-cache-status: HIT` confirmed the embedding site was running the old widget and would have kept doing so. Every fix shipped would have reached nobody, with nothing visible from outside to say so.
+### Three bugs the browser testing caught
 
-## How signing in works now
+1. **Back bounced straight into a conversation.** `loadChannels` auto-opened the first channel whenever none was active, which is right on first load and wrong after an explicit Back, so the channel list could never be reached.
+2. **No Back button at all with one channel.** Hiding it looked tidy and was a trap, because the channel list is also where New message lives. A visitor following a single channel could never start a DM.
+3. **Direct messages were titled with your own name in them**, so a conversation with one person read as "you, them". Notes to self still fall back correctly, since that is a real Discourse feature rather than an empty case.
 
-1. The widget asks `/api/auth/begin` for a handshake and keeps the returned secret in memory. Only the id goes into the popup URL, so the address bar, history and any referrer leak nothing usable.
-2. The popup signs the visitor in through the forum and marks the handshake authorised against their user id. It mints nothing, so no usable credential is ever stored.
-3. The widget polls `/api/auth/claim` with the id and the secret. The token is minted at claim time, exactly once, for a caller that proves it knows the secret, compared in constant time.
+## Next: the appearance admin page
 
-`postMessage` survives only as a shortcut to poll immediately when the opener happened to survive. Nothing depends on it.
+Decided with Rob: a real admin page under Admin, Plugins, per site, covering accent colour, corner position and launcher label. The per site `theme` column already exists and is already delivered to the widget, so the storage and the transport are done. What remains is validation, the widget honouring it, staff only endpoints, and the Ember page itself.
 
-## The widget URL changed
-
-```
-https://zoobc.pro/chat-bridge/widget.js
-```
-
-Not `/plugins/discourse-chat-bridge/widget.js`. The old path is served with a one year immutable cache policy and cannot be updated. The new one is served by a controller with `max-age=300`, `must-revalidate` and an ETag.
-
-**Cloudflare currently overrides that to `max-age=14400`.** The origin sends 300 and Cloudflare rewrites it, which is its Browser Cache TTL setting. Until that is set to respect origin headers, a released fix takes up to four hours to reach browsers.
-
-## Testing leftovers, all removed
-
-Test user deleted, 10 tokens revoked, 11 handshake rows cleared, test messages deleted, `http://localhost:8000` removed from `cors_origins`, local server stopped. Production confirmed afterwards: 8 users, 1 live chat message, 0 active tokens, 0 handshakes, `cors_origins` back to the three real sites, forum answering 200.
+Not started.
 
 ## Decided
 
