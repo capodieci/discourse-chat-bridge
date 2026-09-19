@@ -1,0 +1,9 @@
+*.sqlite
+*.sqlite3
+*.db
+config.php
+config.local.*
+.env
+*.pem
+*.key
+*.log
