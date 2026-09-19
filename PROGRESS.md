@@ -34,15 +34,25 @@ Verified end to end in a real browser with a fake microphone, and in the forum's
 
 ### 2. Admin page, all per site settings
 
-Built after voice so the voice toggle is part of it from the start rather than bolted on.
+Backend complete and verified. The page itself is blocked on a decision, see below.
 
-- [ ] Per site theme validation and storage: `accent` as a strict hex colour, `position` as an enum of `bottom-right` or `bottom-left`, `launcher_label` as plain text. The `theme` column already exists and is already delivered to the widget by `/api/session/me`.
-- [ ] Widget honours the theme. Accent drives the bubble, header and send button. Position moves the bubble and panel to the chosen corner, including in the mobile fullscreen rules.
-- [ ] Per site feature toggles: direct messages on or off, voice messages on or off, and the single channel option for support style deployments.
-- [ ] Staff only admin endpoints to list, create, update and disable sites. Guarded by Discourse's staff check and never by a bridge token: the widget API is for visitors on other websites, administration is a forum concern.
-- [ ] The admin page itself, under Admin, Plugins. A list of sites, a form per site, and the generated script tag ready to copy.
-- [ ] The security warning lives **on the form**, beside the origin field, not in a document. Registering a site grants it cross origin access with credentials, so a cross site scripting hole on that site reaches forum accounts. An admin adding a partner's site must be told at the moment they add it.
-- [ ] Note on the one channel option that a shared channel means everyone sees everyone's messages, and that direct messages are disabled for such a site by design.
+- [x] Per site theme validation and storage. `accent` must be an exact hex colour, `position` is an enum, `launcher_label` is capped. Checked against named colours, `rgb()`, `url()`, `expression()` and a value carrying a semicolon, all refused.
+- [x] Widget honours the theme. Accent is applied as a CSS custom property rather than concatenated into a stylesheet, so even a validation slip cannot become CSS injection. Position moves the bubble and panel to either corner, including under the mobile fullscreen rules.
+- [x] Per site feature toggles for direct messages and voice messages, enforced on the server as well as hidden in the widget, because hiding a button is not a permission check.
+- [x] Staff only admin endpoints, inheriting Discourse's own admin controller. They keep `cors_origins` in step automatically, including removing an origin when a site is disabled, renamed or deleted, while keeping one that another enabled site still uses.
+- [ ] The admin page itself. **Blocked, see the note below.**
+- [ ] The security warning on the form.
+- [ ] The one channel option and its note.
+
+#### What blocks the page
+
+Rob chose a real Ember page under Admin, Plugins. Building the backend turned up a cost that was not visible when that choice was made.
+
+Plugin JavaScript is compiled into `app/assets/generated/<plugin>/js` **when the container is built**. Our plugin has no such bundle because it ships no Ember assets. So an Ember admin page does not appear after a `git pull` and a restart: it needs a full `./launcher rebuild`, and so does every subsequent change to it during development.
+
+Every deployment so far has been a pull plus an eighteen second restart. With an Ember page those become rebuilds, which are the operation this project has been most careful about, need explicit approval each time, and take minutes rather than seconds. `CLAUDE.md` also states no build step as a preference.
+
+The alternative is a server rendered page inside the plugin: plain HTML and vanilla JavaScript, staff guarded, deployed by a restart like everything else. It would live at `/chat-bridge/admin` rather than under `/admin/plugins/`, because Discourse serves its own single page application for admin paths and a server rendered page there would be intercepted by it.
 
 ### 3. What the visitor can change
 
