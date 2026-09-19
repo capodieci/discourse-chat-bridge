@@ -1,69 +1,33 @@
 # Progress
 
-## Done
+## Done, deployed, and verified in a real browser
 
-- Phase 0, discovery. Delivered `docs/discovery-report.md`, with host specifics kept out of the public repository in `docs/local/`.
-- Architecture settled: a Discourse plugin, not an external bridge. See `docs/decisions.md` record 0002.
-- Domain model written. Three tables instead of the twelve the brief anticipated. See `docs/domain-model.md`.
-- Phase 1 complete and installed. The plugin is live on the forum.
+Phase 0 discovery, the plugin architecture decision, the domain model, Phase 1 infrastructure and Phase 2 in full. The plugin is live on `zoobc.pro` and the widget has been driven end to end in headless Chromium from `http://localhost:8000`, a genuinely different origin.
 
-## Phase 1 result, verified on 2026-09-19
+### What the browser test proved, on 2026-09-19
 
-- Backup taken and verified before any change. `app.yml` backed up, then changed by exactly two additions.
-- One rebuild. Forum verified healthy afterwards: homepage, `/latest`, `/login`, `/chat`, `/about` all 200. Data intact at 8 users, 319 posts, 261 topics.
-- Plugin cloned from GitHub by the container, three migrations ran, `GET /chat-bridge/health` returns 200.
-- CORS verified by request. A registered origin gets the plugin's own strict headers. An unregistered origin is refused at the application layer.
-- `auth/start` verified: an unknown site key returns 403, a valid one redirects an anonymous visitor to the forum login.
-- Three sites registered: `https://zoobc.com`, `https://zoobc.foundation`, `https://zoobc.network`. `https://zoobc.net` planned for later.
+- Widget loads cross origin, mounts, opens its shadow root, renders the bubble at 56x56.
+- **Style isolation holds.** A probe element on the host page sharing the widget's internal class names picked up none of its styling.
+- Panel opens at 370x540 with the correct header and sign in prompt.
+- The sign in popup opens and lands on `https://zoobc.pro/login`, the forum's own login.
+- Cross origin `fetch` to `/chat-bridge/health` succeeds, so CORS is correct in a real browser and not only in curl.
+- Signed in: channel list loads, a channel opens, the real forum message renders with author, avatar and timestamp, composer and sign out appear.
+- **Sending works.** A message typed into the composer and sent with Enter reached Discourse and rendered back. It was deleted immediately afterwards.
+- Zero console errors, zero page errors, zero failed requests across every run.
 
-## Known issues and debts
+### Bugs the testing found, all fixed
 
-1. The forum was upgraded from `2026.8.0` to `2026.9.0` as a side effect of the rebuild, because `./launcher rebuild` always pulls the latest image. This was not flagged before approval. It should be flagged every future time.
-2. Three August backups were lost to the retention policy after the backup command was run three times. The two duplicate 19 September copies have since been deleted with Rob's approval, so retention is back to three of five slots. The August backups are not recoverable.
-3. `DISCOURSE_ENABLE_CORS` is global, not scoped to the plugin. Every Discourse endpoint now accepts cross origin requests from the two listed sites with credentials. See decision 0005.
-4. The plugin ships `CLAUDE.md`, `PROGRESS.md` and `docs/` into the container, because the repository root is the plugin root. Harmless, but untidy for a public release. Worth cleaning up before Phase 6.
+1. **`/channels/list` returned 500.** The presenter asked a membership record for `unread_count`, which is not a method it has. Unread lives in `Chat::TrackingStateReport`. The 39 checks were all passing while this was broken, because they tested pure functions and had never handed the presenter a real Discourse object. Six integration checks now cover exactly that.
+2. **`session/me` returned a raw `avatar_template`** instead of an absolute `avatar_url`, unlike every other endpoint. Now uses the presenter like the rest.
+3. **Two checks used origins a real deployment might register**, so registering `localhost:8000` for testing made a check fail on uniqueness and look like a validation bug.
+4. **The demo page reported "no widget script tag found"** on a page where the tag was present and working. Its inline script read the tag before the parser had reached it.
 
-## Next: Phase 2, the widget
+45 self checks now pass against the live forum.
 
-The server side works and is reachable. What does not exist yet is anything a visitor can see.
+### Testing leftovers, all cleaned up
 
-Done, written and verified against real forum data, but not yet deployed:
-
-- **Bridge endpoints.** `channels/list`, `channels/mark_read`, `messages/history`, `messages/send`. These call Discourse's own service objects (`Chat::ListUserChannels`, `Chat::ListChannelMessages`, `Chat::CreateMessage`, `Chat::UpdateUserChannelLastRead`) with the bridge guardian, so permissions are Discourse's answer and not ours.
-- **`ChatBridge::Sanitizer`.** A second strict pass over Discourse's `cooked` HTML before it crosses to another origin. Uses `Rails::HTML5::SafeListSanitizer`, already present, so no new dependency.
-- **`ChatBridge::Presenter`.** Small stable shapes for the widget, so no Discourse serializer is ever exposed to a third party site.
-- **`authorized_channel`** in the base controller. Channel ids from the browser are checked against both Discourse's guardian and the site's allow list on every request, and a refused channel returns the same answer as a missing one so the endpoint cannot be used to discover private channels.
-
-- **`public/widget.js`.** Vanilla JS, no build step, rendered entirely inside a Shadow DOM so host page CSS cannot reach it and its own CSS cannot leak out. Corner bubble with unread badge, channel list, message list, composer. Enter sends, Shift and Enter makes a new line. Light and dark both handled through `prefers-color-scheme`. Sign in opens a popup and the token arrives by `postMessage`, with the origin and the state value both checked before it is accepted. No cookies anywhere.
-- **Translations.** English is inlined so one script tag is enough with no extra round trip. `data-strings-url` loads another language, and any key missing from it falls back to English, so a partial translation degrades key by key instead of breaking the interface. `public/widget.strings.en.json` is the canonical table for translators and is verified to have exactly the same keys as the inlined one.
-- **`Transport`.** Present as an object with `start`, `stop` and `onEvents` and nothing else. The current implementation refetches recent history on an adaptive interval, 3 seconds while open, 12 closed, 30 when the tab is hidden. Crude but correct, and replaceable by MessageBus without any other part of the widget changing.
-
-- **Transport reworked, and MessageBus ruled out for now.** A browser on another domain cannot authenticate to `/message-bus`: its CORS policy allows four request headers and none carries a bearer token, and Discourse's query parameter auth route is restricted to RSS and calendar endpoints. The one header that does work, `X-Shared-Session-Key`, is a session equivalent credential and would turn a cross site scripting hole on an embedding site into full forum account takeover. Rejected. See `docs/decisions.md` record 0006, which also describes the safe way to get real time back.
-- **`/api/channels/updates`.** Two integers per channel, two indexed queries, no serializers and no message bodies. The widget polls this and only asks for messages when something actually moved. Exponential backoff on failure, so a struggling forum is not hammered.
-
-- **`demo/index.html`.** A deliberately plain page whose only job is to be somewhere the forum is not. It reports its own origin against the bridge's, checks the health endpoint, confirms the widget mounted and its shadow root opened, and measures whether any widget CSS escaped into the page. Also lists what each failure mode means, so a broken integration diagnoses itself.
-- **`tests/checks.rb`.** 39 self checks covering the sanitizer, origin validation, token hashing, revocation, expiry and single use nonces. Written as a plain script rather than RSpec so it runs against a real installation, including production, where no test database exists. Everything that writes runs inside a transaction that always rolls back, and one of the checks verifies the rollback happened.
-
-**All 39 checks pass against the live forum**, run without modifying the deployed plugin. Verified afterwards that the database was unchanged: three sites, zero tokens, zero nonces.
-
-- **`tests/loadcheck.rb`.** A pre-flight that catches what a syntax check cannot: unresolvable constants, a route pointing at a missing action, an error code with no translation, Discourse internals moved by an upgrade. Run against a fresh clone of the repository before deploying: **clean**, all 9 routes map to real actions, all 11 constants resolve, all 7 error codes have translations.
-
-Phase 2 is code complete and every check that can be run without deploying has been run and passes.
-
-## The one thing that cannot be checked from here
-
-The widget has never run in a browser. Every line of Ruby is verified against the live forum; not one line of JavaScript has executed anywhere. Deploying is `git pull` in the container plus a Rails restart, roughly ten seconds, no rebuild. Rollback is `git checkout` of the previous commit and another restart.
-
-Until that happens, treat all of Phase 2 as written but unproven.
-
-## Open, needs a decision from Rob
-
-1. Deploy Phase 2 and drive the demo page against it.
-2. Capability scoped MessageBus channels, to restore instant delivery without handing embedding sites a session equivalent credential. See `docs/decisions.md` record 0006.
-
-None of the Phase 2 work is **deployed**. The plugin running on the forum is still the Phase 1 version. Deploying is a `git pull` in the container plus a Rails restart, roughly ten seconds of interruption rather than a rebuild, and it needs approval.
-
-The Ruby has been verified against real forum data. The widget has only been syntax checked and audited by reading: it has never run in a browser, because that requires deploying. Treat it as unproven until it has.
+- Test message deleted, test token revoked, `http://localhost:8000` removed from `cors_origins`, local server stopped.
+- Production state confirmed afterwards: `cors_origins` back to the three real sites, zero active tokens, one live chat message, forum answering 200.
 
 ## Decided
 

@@ -108,10 +108,6 @@ python3 -m http.server 8000</pre>
   probe.style.display = "none";
   document.body.appendChild(probe);
 
-  var BRIDGE = document.getElementById("cb-widget")
-    ? new URL(document.getElementById("cb-widget").src, location.href).origin
-    : null;
-
   function set(id, text, cls) {
     var el = document.getElementById(id);
     el.textContent = text;
@@ -119,9 +115,24 @@ python3 -m http.server 8000</pre>
   }
 
   set("origin", location.origin);
-  set("bridge", BRIDGE || "no widget script tag found", BRIDGE ? "" : "bad");
 
-  if (BRIDGE) {
+  // The widget script tag sits below this one, so at the moment this runs the
+  // parser has not reached it yet and getElementById returns null. Everything
+  // that depends on it therefore waits for DOMContentLoaded. Reading it inline
+  // silently reported "no widget script tag found" on a page where the tag was
+  // present and working.
+  document.addEventListener("DOMContentLoaded", function () {
+    var tag = document.getElementById("cb-widget");
+    if (!tag) {
+      set("bridge", "no widget script tag found", "bad");
+      set("cross", "cannot tell", "bad");
+      set("health", "cannot tell", "bad");
+      return;
+    }
+
+    var BRIDGE = new URL(tag.src, location.href).origin;
+    set("bridge", BRIDGE);
+
     var cross = BRIDGE !== location.origin;
     set("cross", cross ? "yes, this is a real cross origin test" : "no, same origin, this proves nothing", cross ? "ok" : "bad");
 
@@ -134,7 +145,7 @@ python3 -m http.server 8000</pre>
         else set("health", "unexpected response", "bad");
       })
       .catch(function (e) { set("health", "unreachable: " + e.message, "bad"); });
-  }
+  });
 
   window.addEventListener("load", function () {
     setTimeout(function () {
