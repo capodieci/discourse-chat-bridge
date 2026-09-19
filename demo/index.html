@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Discourse Chat Bridge, cross origin demo</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    padding: 2rem 1rem 6rem;
+    font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    max-width: 44rem;
+    margin-inline: auto;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+  .sub { color: #666; margin-top: 0; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875rem; }
+  pre {
+    background: #f4f4f5; padding: .75rem 1rem; border-radius: 8px;
+    overflow-x: auto; border: 1px solid #e4e4e7;
+  }
+  code:not(pre code) { background: #f4f4f5; padding: .1rem .35rem; border-radius: 4px; }
+  .card { border: 1px solid #e4e4e7; border-radius: 10px; padding: 1rem 1.25rem; margin: 1.25rem 0; }
+  .card h2 { font-size: 1rem; margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid #e4e4e7; vertical-align: top; }
+  th { width: 11rem; color: #555; font-weight: 600; }
+  .ok { color: #15803d; font-weight: 600; }
+  .bad { color: #b91c1c; font-weight: 600; }
+  .pending { color: #a16207; font-weight: 600; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #18181b; color: #e4e4e7; }
+    .sub { color: #a1a1aa; }
+    pre, code:not(pre code) { background: #27272a; border-color: #3f3f46; }
+    .card { border-color: #3f3f46; }
+    th, td { border-bottom-color: #3f3f46; }
+    th { color: #a1a1aa; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Discourse Chat Bridge</h1>
+<p class="sub">A deliberately plain page, whose only job is to be somewhere the forum is not.</p>
+
+<div class="card">
+  <h2>What this page proves</h2>
+  <p>
+    The widget is loaded from the forum, but this page is served from a different
+    origin. If the bubble appears in the corner, signing in opens a popup, and a
+    message sends and arrives, then every cross origin mechanism in the project
+    works: CORS, the popup handshake, <code>postMessage</code> targeting, bearer
+    token authentication, and the polling transport.
+  </p>
+  <p>
+    Nothing here is styled to match the widget on purpose. Any visual bleed
+    between this page and the widget would be a bug in the Shadow DOM isolation.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Live check</h2>
+  <table>
+    <tr><th>This page's origin</th><td id="origin">reading</td></tr>
+    <tr><th>Bridge origin</th><td id="bridge">reading</td></tr>
+    <tr><th>Cross origin?</th><td id="cross">reading</td></tr>
+    <tr><th>Bridge health</th><td id="health">checking</td></tr>
+    <tr><th>Widget script</th><td id="script">checking</td></tr>
+    <tr><th>Widget mounted</th><td id="mounted">checking</td></tr>
+    <tr><th>Style isolation</th><td id="isolation">checking</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Running it</h2>
+  <p>Serve this directory from any origin that is not the forum. The simplest:</p>
+<pre>cd demo
+python3 -m http.server 8000</pre>
+  <p>
+    Then register that origin, which also adds it to <code>cors_origins</code>:
+  </p>
+<pre>rake chat_bridge:site:add[Local demo,http://localhost:8000]</pre>
+  <p>
+    Plain <code>http</code> is accepted for <code>localhost</code> only. Every
+    other origin must be <code>https</code>, because a token travelling over
+    plain http is a token anyone on the network can read.
+  </p>
+  <p>Put the printed site key in the script tag at the bottom of this file, and reload.</p>
+</div>
+
+<div class="card">
+  <h2>If the bubble does not appear</h2>
+  <table>
+    <tr><th>Nothing at all</th><td>The script did not load. Check the browser console and the <code>src</code> below.</td></tr>
+    <tr><th>Console: missing data-site-key</th><td>The placeholder below was not replaced.</td></tr>
+    <tr><th>Sign in does nothing</th><td>A popup blocker. The widget reports this, but only after the first attempt.</td></tr>
+    <tr><th>CORS error in console</th><td>This origin is not in <code>cors_origins</code>. Registering the site adds it; check with <code>rake chat_bridge:site:list</code>.</td></tr>
+    <tr><th>Signed in, but "not available"</th><td>Working as intended. The forum only allows chat from trust level 1, so a new account is refused until it earns that.</td></tr>
+  </table>
+</div>
+
+<script>
+  // This element exists so the isolation check has something to measure. If the
+  // widget's CSS were leaking, a bare div like this would be affected by it.
+  var probe = document.createElement("div");
+  probe.className = "msg panel bubble wrap";
+  probe.style.display = "none";
+  document.body.appendChild(probe);
+
+  var BRIDGE = document.getElementById("cb-widget")
+    ? new URL(document.getElementById("cb-widget").src, location.href).origin
+    : null;
+
+  function set(id, text, cls) {
+    var el = document.getElementById(id);
+    el.textContent = text;
+    if (cls) el.className = cls;
+  }
+
+  set("origin", location.origin);
+  set("bridge", BRIDGE || "no widget script tag found", BRIDGE ? "" : "bad");
+
+  if (BRIDGE) {
+    var cross = BRIDGE !== location.origin;
+    set("cross", cross ? "yes, this is a real cross origin test" : "no, same origin, this proves nothing", cross ? "ok" : "bad");
+
+    fetch(BRIDGE + "/chat-bridge/health")
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var d = j && j.data;
+        if (d && d.bridge_enabled && d.chat_enabled) set("health", "reachable, bridge and chat both enabled", "ok");
+        else if (d) set("health", "reachable, but bridge_enabled=" + d.bridge_enabled + " chat_enabled=" + d.chat_enabled, "bad");
+        else set("health", "unexpected response", "bad");
+      })
+      .catch(function (e) { set("health", "unreachable: " + e.message, "bad"); });
+  }
+
+  window.addEventListener("load", function () {
+    setTimeout(function () {
+      var tag = document.getElementById("cb-widget");
+      set("script", tag ? "tag present" : "tag missing", tag ? "ok" : "bad");
+
+      var hostEl = document.querySelector("[data-discourse-chat-bridge]");
+      if (hostEl && hostEl.shadowRoot) {
+        var bubble = hostEl.shadowRoot.querySelector(".bubble");
+        set("mounted", bubble ? "yes, shadow root open and bubble rendered" : "host present but nothing rendered", bubble ? "ok" : "bad");
+      } else {
+        set("mounted", "not mounted, see the console", "bad");
+      }
+
+      // The probe shares class names with the widget's internals. If the
+      // widget's styles were escaping the Shadow DOM, this element would pick
+      // up a background, a radius or a font it was never given.
+      var cs = getComputedStyle(probe);
+      var leaked = cs.borderRadius !== "0px" || cs.backgroundColor !== "rgba(0, 0, 0, 0)";
+      set("isolation", leaked ? "widget CSS leaked into the page" : "clean, no widget CSS escaped the shadow root", leaked ? "bad" : "ok");
+    }, 400);
+  });
+</script>
+
+<!--
+  Replace REPLACE_WITH_SITE_KEY with the key printed by
+  rake chat_bridge:site:add[...], and point src at your forum.
+-->
+<script id="cb-widget"
+        src="https://zoobc.pro/plugins/discourse-chat-bridge/widget.js"
+        data-site-key="REPLACE_WITH_SITE_KEY"
+        defer></script>
+
+</body>
+</html>

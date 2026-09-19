@@ -41,11 +41,15 @@ Done, written and verified against real forum data, but not yet deployed:
 - **Transport reworked, and MessageBus ruled out for now.** A browser on another domain cannot authenticate to `/message-bus`: its CORS policy allows four request headers and none carries a bearer token, and Discourse's query parameter auth route is restricted to RSS and calendar endpoints. The one header that does work, `X-Shared-Session-Key`, is a session equivalent credential and would turn a cross site scripting hole on an embedding site into full forum account takeover. Rejected. See `docs/decisions.md` record 0006, which also describes the safe way to get real time back.
 - **`/api/channels/updates`.** Two integers per channel, two indexed queries, no serializers and no message bodies. The widget polls this and only asks for messages when something actually moved. Exponential backoff on failure, so a struggling forum is not hammered.
 
-Still to do:
+- **`demo/index.html`.** A deliberately plain page whose only job is to be somewhere the forum is not. It reports its own origin against the bridge's, checks the health endpoint, confirms the widget mounted and its shadow root opened, and measures whether any widget CSS escaped into the page. Also lists what each failure mode means, so a broken integration diagnoses itself.
+- **`tests/checks.rb`.** 39 self checks covering the sanitizer, origin validation, token hashing, revocation, expiry and single use nonces. Written as a plain script rather than RSpec so it runs against a real installation, including production, where no test database exists. Everything that writes runs inside a transaction that always rolls back, and one of the checks verifies the rollback happened.
 
-1. A demo page on a different origin to prove the popup and CORS end to end.
-2. Tests for the sanitizer, the origin checks, and the permission checks.
-3. Optional, needs a decision: capability scoped MessageBus channels to restore instant delivery. See record 0006.
+**All 39 checks pass against the live forum**, run without modifying the deployed plugin. Verified afterwards that the database was unchanged: three sites, zero tokens, zero nonces.
+
+Phase 2 is code complete. Still to do:
+
+1. Deploy and find out whether the widget renders. Nothing in the browser has ever run.
+2. Optional, needs a decision: capability scoped MessageBus channels to restore instant delivery. See record 0006.
 
 None of the Phase 2 work is **deployed**. The plugin running on the forum is still the Phase 1 version. Deploying is a `git pull` in the container plus a Rails restart, roughly ten seconds of interruption rather than a rebuild, and it needs approval.
 

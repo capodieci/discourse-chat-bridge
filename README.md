@@ -88,3 +88,23 @@ rake chat_bridge:prune                      # delete expired tokens and old nonc
 ## License
 
 MIT. See `LICENSE`.
+
+## Running the self checks
+
+```sh
+docker exec app rails runner \
+  /var/www/discourse/plugins/discourse-chat-bridge/tests/checks.rb
+```
+
+39 checks covering the HTML sanitizer, origin validation, token hashing and revocation, and single use login nonces. Safe to run against a production install: everything that writes happens inside a transaction that is always rolled back, and one of the checks verifies that.
+
+## Trying it from another origin
+
+`demo/index.html` is a plain page that reports whether every cross origin mechanism works. Serve it from anywhere that is not the forum:
+
+```sh
+cd demo && python3 -m http.server 8000
+rake chat_bridge:site:add[Local demo,http://localhost:8000]
+```
+
+Plain `http` is accepted for `localhost` only. Every other origin must be `https`.
