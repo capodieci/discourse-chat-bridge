@@ -82,6 +82,55 @@ The widget talks to a `Transport` object with `start`, `stop`, and `onEvents`, s
 
 Discourse remains the only authority. Every plugin endpoint runs `Guardian.new(current_user_from_token)` and asks the same questions the forum asks itself. The plugin never decides independently that a user may see something, and never caches a permission answer. Channel ids arriving from the client are always checked, never trusted.
 
+## Direct messages
+
+Starting a conversation with a named person needs two things Discourse already
+provides, so nothing new is stored.
+
+- Finding people: `Chat::SearchChatable`, the same service the forum's own chat
+  composer uses. It is called with the visitor's guardian, so the results are
+  the people that visitor is allowed to see and no one else. The bridge never
+  queries the user table directly.
+- Opening the conversation: `Chat::CreateDirectMessageChannel`, called with
+  `target_usernames` and `upsert: true`, so asking twice returns the existing
+  conversation rather than creating a second one.
+
+Two constraints inherited from the forum, not invented here:
+
+- `direct_message_enabled_groups` defaults to trust level 1, the same gate as
+  chat itself. Someone who cannot chat cannot start a DM either, and the widget
+  reports that in plain words rather than failing.
+- `chat_max_direct_message_users` caps how many people one conversation can
+  hold, currently 20. The service enforces it; the bridge surfaces the refusal.
+
+A site's `allowed_channel_ids`, when set, restricts which channels the widget
+shows. A DM channel is created on demand and cannot be known in advance, so a
+site with a restricted channel list does not get direct messages. That is the
+safe reading of a deliberately narrowed configuration: a site pinned to one
+support channel should not become a way to message the whole membership.
+
+## Appearance
+
+Per site, stored in the `theme` JSON column that already exists on
+`chat_bridge_sites` and is already delivered to the widget by
+`/api/session/me`. Three fields, deliberately few:
+
+- `accent`: a hex colour, used for the bubble, the panel header and the send
+  button. Validated as `#rgb` or `#rrggbb` and nothing else, because this value
+  is interpolated into a stylesheet inside the Shadow DOM and anything less
+  strict is a CSS injection.
+- `position`: `bottom-right` or `bottom-left`. An enum, not free text.
+- `launcher_label`: the heading shown on the panel. Plain text, escaped like
+  every other string the widget renders.
+
+Anything not set falls back to the widget's defaults, so a site with no theme
+row behaves exactly as today.
+
+Editing happens in a staff only admin page under Admin, Plugins. That page talks
+to endpoints that are separate from the widget API and guarded by Discourse's
+own staff check, never by a bridge token. The widget API is for visitors on
+other websites; administration is a forum concern and stays inside the forum.
+
 ## Security notes
 
 - Enabling CORS sets `Access-Control-Allow-Credentials: true` for listed origins. A cross site scripting hole on any listed site therefore becomes a path to that visitor's forum account. Keep the origin list short, and only list sites under our control.

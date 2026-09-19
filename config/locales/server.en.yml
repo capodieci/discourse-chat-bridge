@@ -14,3 +14,6 @@ en:
       rate_limited: "Too many requests. Please wait a moment."
       unknown_channel: "That channel does not exist, or you do not have access to it."
       empty_message: "A message cannot be empty."
+      dm_not_available: "Direct messages are not available from this website."
+      no_recipients: "Choose someone to message first."
+      dm_refused: "That conversation could not be started. The person may not accept messages, or may not be allowed to chat."

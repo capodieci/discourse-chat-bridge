@@ -25,5 +25,13 @@
   "error_not_allowed_body": "This forum only allows chat for members who have reached trust level 1. Spend a little time reading on the forum and it will unlock.",
   "error_session_expired": "Your session expired. Please sign in again.",
   "error_chat_disabled": "Chat is currently disabled on the forum.",
-  "signing_in_hint": "Finish signing in using the window that opened. This panel updates by itself."
+  "signing_in_hint": "Finish signing in using the window that opened. This panel updates by itself.",
+  "dm_start": "Message",
+  "error_dm_not_available": "Direct messages are not available from this website.",
+  "error_dm_refused": "That conversation could not be started. The person may not accept messages.",
+  "new_message": "New message",
+  "no_people": "No one found by that name.",
+  "search_people": "Search people",
+  "search_placeholder": "Type a name",
+  "searching": "Searching"
 }

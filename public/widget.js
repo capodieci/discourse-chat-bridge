@@ -57,6 +57,14 @@
     send: "Send",
     sending: "Sending",
     load_older: "Load older messages",
+    new_message: "New message",
+    search_people: "Search people",
+    search_placeholder: "Type a name",
+    searching: "Searching",
+    no_people: "No one found by that name.",
+    dm_start: "Message",
+    error_dm_not_available: "Direct messages are not available from this website.",
+    error_dm_refused: "That conversation could not be started. The person may not accept messages.",
     edited: "edited",
     deleted: "This message was deleted.",
     reconnecting: "Reconnecting",
@@ -114,7 +122,10 @@
     sending: false,
     error: null,
     unread: 0,
-    view: "channels"
+    view: "channels",
+    searchTerm: "",
+    searchResults: [],
+    searching: false
   };
 
   try {
@@ -171,6 +182,8 @@
     if (code === "rate_limited") return t("error_rate_limited");
     if (code === "invalid_token" || code === "origin_mismatch") return t("error_session_expired");
     if (code === "chat_disabled") return t("error_chat_disabled");
+    if (code === "dm_not_available") return t("error_dm_not_available");
+    if (code === "dm_refused" || code === "no_recipients") return t("error_dm_refused");
     return t("error_generic");
   }
 
@@ -437,6 +450,75 @@
       });
   }
 
+  /* -------------------------------------------------------- people and dms */
+
+  var searchTimer = null;
+
+  // Debounced, because this runs on every keystroke and each call reaches the
+  // forum's search service. 250ms is long enough to collapse typing into one
+  // request and short enough that the list still feels live.
+  function searchPeople(term) {
+    state.searchTerm = term;
+    clearTimeout(searchTimer);
+
+    if (!term.trim()) {
+      state.searchResults = [];
+      state.searching = false;
+      render();
+      return;
+    }
+
+    state.searching = true;
+    render();
+
+    searchTimer = setTimeout(function () {
+      var asked = term;
+      api("/users/search", { term: term })
+        .then(function (data) {
+          // A slower earlier request must not overwrite a newer one's results.
+          if (state.searchTerm !== asked) return;
+          state.searching = false;
+          state.searchResults = data.users || [];
+          render();
+        })
+        .catch(function (err) {
+          if (state.searchTerm !== asked) return;
+          state.searching = false;
+          state.searchResults = [];
+          state.error = errorMessage(err.code);
+          render();
+        });
+    }, 250);
+  }
+
+  function openDirectMessage(username) {
+    state.searching = true;
+    state.error = null;
+    render();
+
+    api("/dm/open", { usernames: [username] })
+      .then(function (data) {
+        state.searching = false;
+        state.searchTerm = "";
+        state.searchResults = [];
+
+        // The new conversation will not be in the cached channel list yet, so
+        // add it rather than waiting for the next refresh.
+        var known = false;
+        for (var i = 0; i < state.channels.length; i++) {
+          if (state.channels[i].id === data.channel.id) known = true;
+        }
+        if (!known) state.channels = [data.channel].concat(state.channels);
+
+        openChannel(data.channel.id);
+      })
+      .catch(function (err) {
+        state.searching = false;
+        state.error = errorMessage(err.code);
+        render();
+      });
+  }
+
   /* ------------------------------------------------------------ transport
    *
    * An object with start, stop, onEvents and onUnread, and nothing else, so the
@@ -614,6 +696,12 @@
     ".msg .txt code{background:#f4f4f4;padding:1px 4px;border-radius:4px;font-family:ui-monospace,monospace;font-size:13px}",
     ".msg .txt blockquote{margin:0;padding-left:10px;border-left:3px solid #ddd;color:#555}",
     ".msg .txt a{color:#0b6ecf}",
+    ".search{padding:0 0 8px}",
+    ".search input{width:100%;border:1px solid #d6d6d6;border-radius:8px;padding:9px 11px;font-size:14px;background:#fff;color:inherit}",
+    ".search input:focus{outline:2px solid #0b6ecf;outline-offset:-1px}",
+    ".ch .sub{display:block;font-size:12px;color:#777;font-weight:400}",
+    ".ch .dm{color:#888;font-weight:700;flex:0 0 auto}",
+    ".ch img.av{width:28px;height:28px;border-radius:50%;flex:0 0 auto}",
     ".note{padding:16px;text-align:center;color:#555;font-size:14px;line-height:1.5}",
     ".note h3{margin:0 0 6px;font-size:15px;color:#1b1b1b}",
     ".err{background:#fdecea;color:#8b1a10;padding:8px 12px;font-size:13px}",
@@ -637,6 +725,8 @@
     ".ft{border-top-color:#33363a}",
     ".ft textarea{background:#2a2d31;border-color:#3a3d42;color:#e8e8e8}",
     ".ch:hover{background:#2a2d31}",
+    ".search input{background:#2a2d31;border-color:#3a3d42;color:#e8e8e8}",
+    ".ch .sub{color:#9a9a9a}",
     ".msg .meta b{color:#e8e8e8}",
     ".msg .txt pre,.msg .txt code{background:#2a2d31}",
     ".note{color:#b4b4b4}.note h3{color:#e8e8e8}",
@@ -705,17 +795,51 @@
         esc(t("error_not_allowed_body")) + "</p></div>"
       );
     }
+    if (state.view === "search") {
+      var results = "";
+      if (state.searching) {
+        results = '<div class="note">' + esc(t("searching")) + "</div>";
+      } else if (state.searchTerm.trim() && !state.searchResults.length) {
+        results = '<div class="note">' + esc(t("no_people")) + "</div>";
+      } else {
+        results = state.searchResults
+          .map(function (u) {
+            var av = u.avatar_url ? '<img class="av" src="' + esc(u.avatar_url) + '" alt="">' : "";
+            var sub = u.name ? '<span class="sub">' + esc(u.name) + "</span>" : "";
+            return (
+              '<button class="ch" data-username="' + esc(u.username) + '">' + av +
+              '<span class="n">' + esc(u.username) + sub + "</span></button>"
+            );
+          })
+          .join("");
+      }
+      return (
+        '<div class="search"><input type="search" class="find" ' +
+        'placeholder="' + esc(t("search_placeholder")) + '" ' +
+        'aria-label="' + esc(t("search_people")) + '" ' +
+        'value="' + esc(state.searchTerm) + '"></div>' + results
+      );
+    }
+
     if (state.view === "channels" || !state.activeChannelId) {
-      if (!state.channels.length) return '<div class="note">' + esc(t("no_channels")) + "</div>";
-      return state.channels
-        .map(function (c) {
-          var u = c.unread_count > 0 ? '<span class="u">' + c.unread_count + "</span>" : "";
-          return (
-            '<button class="ch" data-channel="' + c.id + '">' +
-            '<span class="n">' + esc(c.title) + "</span>" + u + "</button>"
-          );
-        })
-        .join("");
+      var newBtn =
+        '<button class="more" data-act="newdm">' + esc(t("new_message")) + "</button>";
+      if (!state.channels.length) {
+        return newBtn + '<div class="note">' + esc(t("no_channels")) + "</div>";
+      }
+      return (
+        newBtn +
+        state.channels
+          .map(function (c) {
+            var u = c.unread_count > 0 ? '<span class="u">' + c.unread_count + "</span>" : "";
+            var icon = c.kind === "dm" ? '<span class="dm">@</span>' : "";
+            return (
+              '<button class="ch" data-channel="' + c.id + '">' + icon +
+              '<span class="n">' + esc(c.title) + "</span>" + u + "</button>"
+            );
+          })
+          .join("")
+      );
     }
     if (!state.messages.length) return '<div class="note">' + esc(t("no_messages")) + "</div>";
 
@@ -744,8 +868,14 @@
 
   function renderPanel() {
     var ch = activeChannel();
-    var showBack = state.view === "messages" && state.channels.length > 1;
-    var title = state.view === "messages" && ch ? ch.title : t("panel_title");
+    var showBack =
+      state.view === "search" || (state.view === "messages" && state.channels.length > 1);
+    var title =
+      state.view === "search"
+        ? t("search_people")
+        : state.view === "messages" && ch
+          ? ch.title
+          : t("panel_title");
     var canCompose = state.token && state.user && state.user.can_chat && state.view === "messages" && state.activeChannelId;
 
     return (
@@ -776,6 +906,17 @@
     var oldTa = root.querySelector(".ft textarea");
     if (oldTa) draft = oldTa.value;
 
+    // The search box is rebuilt on every keystroke because rendering replaces
+    // the panel's markup. Without restoring focus and caret the field would drop
+    // focus mid-word and typing would be impossible.
+    var findFocused = false;
+    var findCaret = 0;
+    var oldFind = root.querySelector(".search .find");
+    if (oldFind) {
+      findFocused = root.activeElement === oldFind;
+      findCaret = oldFind.selectionStart;
+    }
+
     wrap.className = state.open ? "wrap open" : "wrap";
     wrap.innerHTML = (state.open ? renderPanel() : "") + renderBubble();
 
@@ -784,6 +925,16 @@
 
     var ta = root.querySelector(".ft textarea");
     if (ta && draft) ta.value = draft;
+
+    var find = root.querySelector(".search .find");
+    if (find && findFocused) {
+      find.focus();
+      try {
+        find.setSelectionRange(findCaret, findCaret);
+      } catch (e) {
+        /* setSelectionRange is not allowed on every input type in every browser */
+      }
+    }
   }
 
   /* -------------------------------------------------------------- events */
@@ -806,7 +957,12 @@
 
     var chBtn = event.target.closest(".ch");
     if (chBtn) {
-      openChannel(parseInt(chBtn.getAttribute("data-channel"), 10));
+      var username = chBtn.getAttribute("data-username");
+      if (username) {
+        openDirectMessage(username);
+      } else {
+        openChannel(parseInt(chBtn.getAttribute("data-channel"), 10));
+      }
       return;
     }
 
@@ -824,8 +980,18 @@
     } else if (act === "back") {
       state.view = "channels";
       state.activeChannelId = null;
-      transport.stop();
+      state.searchTerm = "";
+      state.searchResults = [];
+      transport.start(null);
+      loadChannels();
+    } else if (act === "newdm") {
+      state.view = "search";
+      state.searchTerm = "";
+      state.searchResults = [];
+      state.error = null;
       render();
+      var find = root.querySelector(".search .find");
+      if (find) find.focus();
     } else if (act === "older") {
       loadOlder();
     } else if (act === "send") {
@@ -836,6 +1002,11 @@
         sendMessage(text);
       }
     }
+  });
+
+  wrap.addEventListener("input", function (event) {
+    if (!event.target.matches(".search .find")) return;
+    searchPeople(event.target.value);
   });
 
   // Enter sends, Shift+Enter makes a new line, which is what every chat client

@@ -28,4 +28,7 @@ ChatBridge::Engine.routes.draw do
 
   match "/api/messages/history" => "messages#history", :via => %i[post options]
   match "/api/messages/send" => "messages#send_message", :via => %i[post options]
+
+  match "/api/users/search" => "users#search", :via => %i[post options]
+  match "/api/dm/open" => "users#open_dm", :via => %i[post options]
 end
