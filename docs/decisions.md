@@ -87,3 +87,30 @@ Cloudflare's Browser Cache TTL on the forum zone rewrites the origin's `max-age=
 - Context: `zoobc.net` currently redirects to `zoobc.com`, so a visitor ends up on the `zoobc.com` origin and is already covered by that site's registration. Rob expects it to become its own server in a couple of months, at which point the redirect goes away.
 - Decision: register nothing now. A registration for an origin that never sends a request is one more entry widening the CORS allow list for no benefit.
 - Consequences: when it becomes its own server it needs one command, `rake chat_bridge:site:add[Net,https://zoobc.net]`, which prints the script tag and adds the origin to `cors_origins` in the same step. No downtime, no rebuild. Worth re-reading the security note in record 0005 at that point, since every added origin is another site whose compromise reaches forum accounts.
+
+## 0009: Group calls are out of scope
+
+- Date: 2026-09-19
+- Status: accepted, decided by Rob
+- Context: the original brief ended with self hosted LiveKit plus TURN for group voice rooms. That means every adopting forum runs a second service, which is a large step away from this project's promise of one script tag.
+- Decision: no group calls. Rob has that need on a different project and will solve it there.
+- Consequences: no SFU, no LiveKit, no new long lived process, and no new firewall ports for media forwarding. One to one calls remain in scope because they can be peer to peer and need no server side media at all.
+
+## 0010: One to one calls, and what they honestly cost
+
+- Date: 2026-09-19
+- Status: planned
+- Context: Rob wants one to one voice calls provided they install simply and can be switched off by the forum admin.
+- Decision: peer to peer WebRTC with public STUN for discovery. No SFU. Optional TURN, configured by the admin, for the networks that refuse direct connections. Off by default, with a global site setting and a per site toggle.
+- Consequences, stated plainly rather than discovered later:
+  - **Some calls will fail without TURN.** A minority of networks, symmetric NAT and some corporate firewalls, cannot establish a direct peer connection. Without a relay those calls do not connect. That is not a bug to be fixed in the widget, it is the price of not running a relay. The admin page should say so where TURN is configured, and the widget should fail with a clear explanation rather than a spinner.
+  - **Signalling needs to be faster than the chat transport.** Exchanging an offer and an answer over a three second poll makes a call take ten seconds to start, which reads as broken. Call setup therefore polls its own endpoint at a much shorter interval, and only while a call is being set up, so the cost is bounded to the seconds around a call rather than being a permanent load.
+  - This is the first feature where the polling transport is genuinely a constraint rather than an inconvenience, so record 0006's capability scoped MessageBus channel becomes worth revisiting if call setup feels slow.
+
+## 0011: Voice messages need a site setting the admin must change
+
+- Date: 2026-09-19
+- Status: planned
+- Context: the forum's `authorized_extensions` currently contains no audio format at all. Chrome records WebM Opus and Safari records MP4 AAC, so on this forum today a voice message would fail on Chrome and succeed on Safari by accident.
+- Decision: the plugin does not silently edit `authorized_extensions`. It detects the gap, and the admin page states exactly which extensions are missing and what to add.
+- Consequences: one extra step at install time, and an obvious diagnosis instead of a feature that half works depending on the browser. Editing a forum wide upload policy without being asked is not a plugin's decision to make.
