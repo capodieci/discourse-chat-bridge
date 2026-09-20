@@ -1,24 +1,3 @@
-# Announcement for meta.discourse.org
-
-Ready to post. Category: **Customization, Plugin subcategory**. Titles there carry no prefix, so the plugin name alone is the convention.
-
-Suggested tags: `chat`, `embed`, `cors`.
-
----
-
-## Title
-
-**Chat Bridge**
-
-Alternatives, if a more descriptive title suits the category better:
-
-- Chat Bridge: put your forum chat on your other websites
-- Chat Bridge: embed Discourse chat anywhere
-
----
-
-## Post body
-
 I run a small forum and three other websites, and I kept noticing the same thing. People were happy to talk in chat once they were on the forum, but nobody goes to a forum to ask a quick question. They ask it wherever they already are, or they do not ask it at all.
 
 So I have built a plugin that puts the forum's chat on those other sites. One script tag, and a corner bubble appears. Visitors sign in with the forum account they already have, through the forum's own login screen, and talk in the same channels they would see on the forum. Messages they send arrive in the forum's chat like any other message, because they are.

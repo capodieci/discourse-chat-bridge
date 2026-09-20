@@ -82,7 +82,7 @@ Sound and appearance are kept in the browser rather than on the account, because
 - [x] `SECURITY.md`, leading with the trade rather than the mitigations. A registered site can act as your members, no configuration makes that safe because the access is the feature, and the mitigations reduce blast radius without removing it.
 - [x] `CONTRIBUTING.md` and `CHANGELOG.md`. Contributing records the two rules that earned their place, with the real bugs behind them.
 - [x] Compatibility table naming `2026.9.0` and `2026.8.0`, with the list of non public chat internals this depends on and `tests/loadcheck.rb` as the thing to run after an upgrade.
-- [x] `docs/announcement-draft.md`, in prose, saying plainly that delivery is not instant and why.
+- [x] `docs/announcement-post.md`, in prose, saying plainly that delivery is not instant and why, with `docs/announcement-notes.md` holding the title, category and tags.
 
 #### A code gap closed at the same time
 
