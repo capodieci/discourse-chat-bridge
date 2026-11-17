@@ -14,8 +14,9 @@ Put your Discourse chat on any website you control. One script tag, and visitors
 - A corner bubble with an unread badge. Clicking it opens a panel, not a modal: the page behind stays usable, nothing is dimmed and nothing is blocked. On a phone the panel goes fullscreen.
 - Visitors sign in with their forum account, through your forum's own login, including whatever social logins you already have.
 - Channels they follow, message history, sending, direct messages with people search, and voice messages.
-- Per website appearance: accent colour, which corner, and the panel title. Three sites can look like three different products.
-- Per visitor settings: notification sound, light or dark, and muting a conversation.
+- Per website appearance: accent colour, the launcher button's background and icon colours, which corner, and the panel title. Three sites can look like three different products.
+- Nine languages, chosen from the visitor's browser: English, Simplified and Traditional Chinese, Russian, Italian, Spanish, French, Japanese and Korean. See Languages below.
+- Per visitor settings: notification sound, light or dark, language, and muting a conversation.
 - Everything renders inside a Shadow DOM, so the host page's CSS cannot reach in and the widget's cannot leak out.
 
 ## What it does not do
@@ -91,6 +92,35 @@ rake chat_bridge:user:revoke[username]
 rake chat_bridge:prune
 ```
 
+### Appearance
+
+Each website has its own colours, set on the admin page with a colour picker or a hex code, and shown in a live preview before anything is saved.
+
+- **Button background** and **button icon** colour the round launcher in the corner. Leave the background empty and it follows the accent. Leave the icon empty and it is white or near black, whichever reads better on the background.
+- **Accent colour** paints the panel header, the buttons and the links. Text drawn on it switches from white to dark by itself when the accent is pale.
+- **Corner** and **panel title** are as they sound. An empty title is "Community chat", translated for each visitor. A title you type is shown as typed, in every language.
+
+Visitors get these before they sign in. A returning visitor's browser remembers them, so the button is drawn at once in the right colours and the right corner, and a change you save reaches them on their next page load.
+
+### Languages
+
+The widget follows the visitor's browser. It reads the browser's ordered list of preferred languages and uses the first one it has, so someone whose browser says German then French gets French, and anyone it has nothing for gets English.
+
+Four things can decide the language. The most specific wins:
+
+1. The visitor's own choice, in the widget's settings.
+2. `data-lang` on the script tag, for a page that knows its own language, for example the French section of a multilingual site: `<script src="...widget.js" data-site-key="..." data-lang="fr" defer></script>`
+3. A language fixed for the website on the admin page.
+4. The visitor's browser.
+
+The codes are `en`, `zh-CN`, `zh-TW`, `ru`, `it`, `es`, `fr`, `ja` and `ko`. Traditional Chinese is used for Taiwan, Hong Kong and Macau, and for any browser that asks for the Traditional script. Every other Chinese browser gets Simplified.
+
+English is built into `widget.js`. Each other language is a small JSON file fetched only by the visitors who need it. The forum's own login screen, which the sign in window shows, is translated by Discourse itself and follows its `set_locale_from_accept_language_header` setting.
+
+To reword something, or to add a language the widget does not ship, point the script tag at a JSON file of your own with `data-strings-url="/my-strings.json"`. It uses the keys of `public/widget.strings.en.json`, and anything it leaves out falls back.
+
+To add a language to the plugin itself: add `public/widget.strings.<code>.json`, add the code to `LOCALES` in `public/widget.js` and to `LOCALE_NAMES` in `app/models/chat_bridge/site.rb`, and add `config/locales/server.<code>.yml` for the sign in window. `tests/loadcheck.rb` fails if they disagree or a key is missing.
+
 ### Voice messages need an upload setting
 
 Browsers record in different containers: Chrome and Edge produce WebM, Firefox produces Ogg, Safari produces MP4. Discourse rejects any extension not in `authorized_extensions`, which by default contains no audio format at all, so voice messages would work in some browsers and fail in others.
@@ -116,7 +146,7 @@ Two scripts, both read only, both safe against production.
 docker exec app rails runner \
   /var/www/discourse/plugins/discourse-chat-bridge/tests/loadcheck.rb
 
-# Full self checks, 57 of them.
+# Full self checks, 70 of them.
 docker exec app rails runner \
   /var/www/discourse/plugins/discourse-chat-bridge/tests/checks.rb
 ```

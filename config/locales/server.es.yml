@@ -1,0 +1,14 @@
+# The words the sign in popup shows, and the three errors it can report.
+# Everything else falls back to server.en.yml.
+es:
+  chat_bridge:
+    popup:
+      title: "Inicio de sesión del chat"
+      signing_in: "Iniciando sesión..."
+      signed_in: "Sesión iniciada. Puedes cerrar esta ventana."
+      signed_in_return: "Sesión iniciada. Puedes cerrar esta ventana y volver a la página de la que vienes."
+      close: "Cerrar"
+    errors:
+      unknown_site: "Este sitio web no está registrado para integrar el chat."
+      invalid_token: "Tu sesión de chat ha caducado. Inicia sesión de nuevo."
+      chat_disabled: "El chat no está activado en este foro."

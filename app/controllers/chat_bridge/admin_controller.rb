@@ -15,6 +15,7 @@ module ChatBridge
         sites: ChatBridge::Site.order(:id).map { |site| serialize_site(site) },
         positions: ChatBridge::Site::POSITIONS,
         features: ChatBridge::Site::FEATURE_KEYS,
+        locales: ChatBridge::Site::LOCALE_NAMES.map { |code, name| { code: code, name: name } },
         widget_url: "#{::Discourse.base_url}/chat-bridge/widget.js",
         cors_origins: SiteSetting.cors_origins.to_s.split("|").map(&:strip).reject(&:empty?),
         bridge_enabled: SiteSetting.chat_bridge_enabled,
@@ -100,10 +101,7 @@ module ChatBridge
     end
 
     def apply_settings(site)
-      if params.key?(:theme)
-        theme = params[:theme].respond_to?(:to_unsafe_h) ? params[:theme].to_unsafe_h : params[:theme]
-        site.theme = (theme || {}).slice("accent", "position", "launcher_label")
-      end
+      site.theme = ChatBridge::Site.clean_theme(params[:theme]) if params.key?(:theme)
 
       if params.key?(:features)
         raw =

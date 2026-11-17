@@ -28,9 +28,18 @@ module ChatBridge
       serve(File.join(ChatBridge.plugin_root, "public", "widget.js"), "application/javascript")
     end
 
+    # One language's table. The code comes from the URL, so it is checked
+    # against the list of languages we ship before it goes anywhere near a file
+    # path. Anything else is a 404, including a code that happens to look like a
+    # path.
     def strings
+      locale = params[:locale].to_s
+      if !ChatBridge::Site::LOCALES.include?(locale)
+        return render(plain: "not found", status: :not_found)
+      end
+
       serve(
-        File.join(ChatBridge.plugin_root, "public", "widget.strings.en.json"),
+        File.join(ChatBridge.plugin_root, "public", "widget.strings.#{locale}.json"),
         "application/json",
       )
     end
@@ -40,7 +49,9 @@ module ChatBridge
     def serve(path, content_type)
       return render(plain: "not found", status: :not_found) if !File.exist?(path)
 
-      body = File.read(path)
+      # Read as UTF-8 explicitly. The language tables are not ASCII, and the
+      # process default depends on the container's environment.
+      body = File.read(path, encoding: "UTF-8")
       tag = %(W/"#{Digest::SHA256.hexdigest(body)[0, 32]}")
 
       response.headers["Cache-Control"] = "public, max-age=#{MAX_AGE}, must-revalidate"

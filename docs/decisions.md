@@ -107,6 +107,25 @@ Cloudflare's Browser Cache TTL on the forum zone rewrites the origin's `max-age=
   - **Signalling needs to be faster than the chat transport.** Exchanging an offer and an answer over a three second poll makes a call take ten seconds to start, which reads as broken. Call setup therefore polls its own endpoint at a much shorter interval, and only while a call is being set up, so the cost is bounded to the seconds around a call rather than being a permanent load.
   - This is the first feature where the polling transport is genuinely a constraint rather than an inconvenience, so record 0006's capability scoped MessageBus channel becomes worth revisiting if call setup feels slow.
 
+## 0012: Languages as files, chosen in the browser
+
+- Date: 2026-11-17
+- Status: accepted
+- Context: Rob asked for the widget to follow the visitor's browser language, in Chinese, Russian, Italian, Spanish, French, Japanese and Korean as well as English. The widget already had one string table and a `data-strings-url` hook, so the question was where eight more tables should live.
+- Decision: English stays inlined in `widget.js`. Each other language is its own JSON file, fetched on demand from the forum. The language is decided entirely in the browser, and nothing about it is stored on the server.
+- Reasoning: inlining all nine would grow the one file every visitor downloads by nearly half, to carry eight tables that visitor will never read. A file per language costs one small extra request, and only for visitors who are not reading English. The bubble has no visible text, so it is drawn without waiting for that request, and the panel is redrawn when the table arrives.
+- Chinese is two languages here, not one. Simplified and Traditional are different scripts and readers of one are not well served by the other, so `zh-TW`, `zh-HK`, `zh-MO` and anything tagged `Hant` get Traditional, and every other `zh` gets Simplified.
+- Consequences: three lists must agree, in `widget.js`, on the `Site` model and on disk. `tests/loadcheck.rb` checks that they do, and that every file has every key. `widget.js` is kept plain ASCII, with native language names written as escapes, because it is loaded by pages whose charset we do not control.
+
+## 0013: Appearance is public, and arrives before sign in
+
+- Date: 2026-11-17
+- Status: accepted
+- Context: building the button colours turned up that a website's appearance was only delivered by `/api/session/me`. Signed out visitors, nearly everyone on a public website, always saw the default blue bubble in the default corner, whatever the administrator had chosen.
+- Decision: a new endpoint, `/api/site/config`, returns the appearance and feature switches for the requesting origin with no token. The widget caches the answer in `localStorage`.
+- Reasoning: nothing in it is private. It is three colours, a corner, a title, a language and two switches, all of which the page displays to any visitor. The site is resolved from the Origin header like everywhere else, never from the body.
+- Consequences: one more request per page view, to an endpoint that does a single indexed lookup, rate limited by address. A first time visitor's bubble waits for it, for at most two and a half seconds, so that it is never drawn in one colour or corner and then moved. A returning visitor's is drawn at once from the cached copy. An older forum without the endpoint answers 404 and the widget carries on with the defaults.
+
 ## 0011: Voice messages need a site setting the admin must change
 
 - Date: 2026-09-19

@@ -112,19 +112,52 @@ support channel should not become a way to message the whole membership.
 ## Appearance
 
 Per site, stored in the `theme` JSON column that already exists on
-`chat_bridge_sites` and is already delivered to the widget by
-`/api/session/me`. Three fields, deliberately few:
+`chat_bridge_sites`. Six fields, and no others are ever stored:
 
-- `accent`: a hex colour, used for the bubble, the panel header and the send
-  button. Validated as `#rgb` or `#rrggbb` and nothing else, because this value
-  is interpolated into a stylesheet inside the Shadow DOM and anything less
-  strict is a CSS injection.
+- `accent`: a hex colour, used for the panel header, the buttons and the links,
+  and for the bubble unless `launcher_bg` says otherwise. Validated as `#rgb`
+  or `#rrggbb` and nothing else, because this value reaches a stylesheet inside
+  the Shadow DOM and anything less strict is a CSS injection.
+- `launcher_bg` and `launcher_icon`: hex colours for the round button in the
+  corner and the icon inside it, validated exactly like `accent`. Unset, the
+  background follows the accent and the icon is white or near black, whichever
+  reads better.
+- `locale`: one of the shipped language codes, when an administrator wants a
+  website in one language whatever the visitor's browser says. Unset means
+  follow the browser, which is the default. See Languages below.
 - `position`: `bottom-right` or `bottom-left`. An enum, not free text.
 - `launcher_label`: the heading shown on the panel. Plain text, escaped like
   every other string the widget renders.
 
 Anything not set falls back to the widget's defaults, so a site with no theme
 row behaves exactly as today.
+
+Delivered to the widget twice. `/api/site/config` hands it to any visitor of
+the site, signed in or not, because it is what the page shows them anyway and
+the bubble has to be drawn before anyone signs in. `/api/session/me` repeats it
+on sign in. The widget keeps the last copy in `localStorage`, so a returning
+visitor's bubble is drawn at once and corrected in the background if it changed.
+
+## Languages
+
+Nothing is stored about a visitor's language on the server. The choice is made
+in the browser, from four sources in order: the visitor's own setting, kept in
+`localStorage` with the other device preferences; `data-lang` on the script
+tag; the site's `locale`; and the browser's own list of preferred languages.
+
+The strings live in three places, each for a reason:
+
+- English is inlined in `widget.js`, so one script tag is enough and a failed
+  request can never leave the interface without words.
+- Every other language is `public/widget.strings.<code>.json`, served by the
+  same controller as the widget and fetched only by visitors who need it.
+- The few words the sign in popup shows are in `config/locales/server.*.yml`,
+  because that page is rendered by Rails, not by the widget. The widget passes
+  its language to the popup in the URL, as a code checked against our own list.
+
+`ChatBridge::Site::LOCALE_NAMES` is the server's list and `LOCALES` in
+`widget.js` is the widget's. `tests/loadcheck.rb` fails when they differ, when
+a file is missing, or when a file lacks a key the English table has.
 
 Editing happens in a staff only admin page under Admin, Plugins. That page talks
 to endpoints that are separate from the widget API and guarded by Discourse's

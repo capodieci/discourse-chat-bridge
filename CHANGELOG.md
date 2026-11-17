@@ -15,6 +15,17 @@ First working version. Not yet tagged.
 - Visitor settings: notification sound, light or dark, and muting a conversation.
 - `tests/checks.rb`, 57 self checks, and `tests/loadcheck.rb`, a pre-flight for after a Discourse upgrade.
 
+- Nine interface languages, chosen from the visitor's browser: English, Simplified and Traditional Chinese, Russian, Italian, Spanish, French, Japanese and Korean. A visitor can override it in the widget's settings, a page can with `data-lang` on the script tag, and an administrator can fix one per website. The sign in window follows the same language.
+- The launcher button's background and icon colours can be set per website, apart from the accent. The admin page has colour pickers and a live preview.
+- Text on the accent colour turns dark by itself when the accent is pale, so a light brand colour no longer means an unreadable header.
+- The admin page adds websites through a form rather than two browser prompts, collapses each website to one line, and gains a filter once the list is long.
+
+### Changed
+
+- A website's appearance now reaches visitors before they sign in, through a new unauthenticated endpoint, `/chat-bridge/api/site/config`. Until now it arrived with the session, so the colours and corner an administrator chose were only ever seen by signed in visitors.
+- The bubble is drawn once the appearance is known rather than immediately, so it never appears in the default colour and corner and then jumps. A returning visitor's browser remembers the appearance, so for them it is still immediate. A first time visitor waits one round trip, capped at two and a half seconds.
+- `widget.strings.en.json` is now one of a family, `widget.strings.<code>.json`. The old URL still works.
+
 ### Notes for anyone reading the history
 
 Several decisions in `docs/decisions.md` record things that were tried and rejected, with the reasoning. They are worth reading before assuming something was an oversight:

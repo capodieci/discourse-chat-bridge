@@ -6,6 +6,12 @@ en:
   chat_bridge:
     admin:
       title: "Chat Bridge"
+    popup:
+      title: "Chat sign in"
+      signing_in: "Signing you in..."
+      signed_in: "Signed in. You can close this window."
+      signed_in_return: "Signed in. You can close this window and return to the page you came from."
+      close: "Close"
     errors:
       unknown_site: "This website is not registered to embed chat."
       site_disabled: "Chat embedding is disabled for this website."

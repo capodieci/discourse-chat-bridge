@@ -1,0 +1,14 @@
+# The words the sign in popup shows, and the three errors it can report.
+# Everything else falls back to server.en.yml.
+ja:
+  chat_bridge:
+    popup:
+      title: "チャットにログイン"
+      signing_in: "ログインしています..."
+      signed_in: "ログインしました。このウィンドウは閉じてかまいません。"
+      signed_in_return: "ログインしました。このウィンドウを閉じて、元のページに戻ってください。"
+      close: "閉じる"
+    errors:
+      unknown_site: "このウェブサイトはチャットの埋め込み先として登録されていません。"
+      invalid_token: "チャットのセッションの有効期限が切れました。もう一度ログインしてください。"
+      chat_disabled: "このフォーラムではチャットが有効になっていません。"

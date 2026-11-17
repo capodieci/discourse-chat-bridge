@@ -17,6 +17,34 @@ module ChatBridge
     HEX_COLOUR = /\A#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\z/
     FEATURE_KEYS = %w[direct_messages voice_messages].freeze
 
+    # Every colour an administrator can set. `accent` paints the panel header,
+    # the buttons and the links. The two launcher colours paint the round button
+    # in the corner and the icon inside it, for a site whose button should stand
+    # apart from the panel, or simply match a brand the accent does not.
+    COLOUR_KEYS = %w[accent launcher_bg launcher_icon].freeze
+
+    # The languages the widget ships, each named in its own language. The keys
+    # are also the names of the files in public/, widget.strings.<code>.json,
+    # and must match the LOCALES list in public/widget.js. tests/loadcheck.rb
+    # fails when they drift apart.
+    LOCALE_NAMES = {
+      "en" => "English",
+      "zh-CN" => "简体中文",
+      "zh-TW" => "繁體中文",
+      "ru" => "Русский",
+      "it" => "Italiano",
+      "es" => "Español",
+      "fr" => "Français",
+      "ja" => "日本語",
+      "ko" => "한국어",
+    }.freeze
+    LOCALES = LOCALE_NAMES.keys.freeze
+
+    # What a site may store in `theme`. Anything else an admin request carries is
+    # dropped rather than saved, so the column cannot become a place to park
+    # arbitrary JSON that the widget is later handed.
+    THEME_KEYS = (COLOUR_KEYS + %w[position launcher_label locale]).freeze
+
     validate :theme_must_be_safe
 
     # Appearance, with defaults filled in, ready to hand to the widget.
@@ -25,11 +53,19 @@ module ChatBridge
     # because `accent` is interpolated into a stylesheet inside the widget's
     # Shadow DOM. Anything looser than an exact hex colour there is a CSS
     # injection, and CSS can read attribute values and make network requests.
+    #
+    # The same holds for the two launcher colours, and for the same reason.
+    #
+    # `locale` is nil when the site follows each visitor's browser, which is the
+    # default, and a language code when an administrator has fixed one.
     def theme_settings
       raw = theme.is_a?(Hash) ? theme : {}
 
-      accent = raw["accent"].to_s
-      accent = nil if !accent.match?(HEX_COLOUR)
+      colours =
+        COLOUR_KEYS.index_with do |key|
+          value = raw[key].to_s
+          value.match?(HEX_COLOUR) ? value : nil
+        end
 
       position = raw["position"].to_s
       position = nil if !POSITIONS.include?(position)
@@ -37,11 +73,43 @@ module ChatBridge
       label = raw["launcher_label"].to_s.strip
       label = nil if label.empty?
 
-      {
-        "accent" => accent,
+      locale = raw["locale"].to_s
+      locale = nil if !LOCALES.include?(locale)
+
+      colours.merge(
         "position" => position || "bottom-right",
         "launcher_label" => label&.first(60),
-      }
+        "locale" => locale,
+      )
+    end
+
+    # Turns what an admin form sends into what is stored: known keys only,
+    # whitespace trimmed, and blanks removed so that "not set" has one
+    # representation rather than a mixture of nil, "" and a missing key.
+    # "auto" is how the form says "follow the visitor's browser", which is the
+    # absence of a fixed language, so it is stored as nothing at all.
+    #
+    # It does not judge the values. That is the validation's job, so a bad colour
+    # still reaches `theme_must_be_safe` and comes back as a readable error
+    # instead of being silently discarded here.
+    def self.clean_theme(raw)
+      raw = raw.to_unsafe_h if raw.respond_to?(:to_unsafe_h)
+      return {} if !raw.is_a?(Hash)
+
+      raw
+        .transform_keys(&:to_s)
+        .slice(*THEME_KEYS)
+        .transform_values { |value| value.to_s.strip }
+        .reject { |key, value| value.empty? || (key == "locale" && value == "auto") }
+    end
+
+    # The Rails name for one of our language codes, or nil when it is not one of
+    # ours. Discourse names its locales zh_CN where browsers say zh-CN. Checked
+    # against the list first, so a value from a query string can never reach
+    # I18n as an arbitrary symbol.
+    def self.i18n_locale(code)
+      code = code.to_s
+      LOCALES.include?(code) ? code.tr("-", "_").to_sym : nil
     end
 
     # Behaviour. Both default to on, so a site created before these existed keeps
@@ -62,9 +130,16 @@ module ChatBridge
       return if raw.blank?
       return errors.add(:theme, "must be an object") if !raw.is_a?(Hash)
 
-      accent = raw["accent"]
-      if accent.present? && !accent.to_s.match?(HEX_COLOUR)
-        errors.add(:theme, "accent must be a hex colour such as #0b6ecf")
+      colour_names = {
+        "accent" => "accent",
+        "launcher_bg" => "button background",
+        "launcher_icon" => "button icon",
+      }
+      COLOUR_KEYS.each do |key|
+        value = raw[key]
+        if value.present? && !value.to_s.match?(HEX_COLOUR)
+          errors.add(:theme, "#{colour_names[key]} must be a hex colour such as #0b6ecf")
+        end
       end
 
       position = raw["position"]
@@ -75,6 +150,11 @@ module ChatBridge
       label = raw["launcher_label"]
       if label.present? && label.to_s.length > 60
         errors.add(:theme, "launcher label must be 60 characters or fewer")
+      end
+
+      locale = raw["locale"]
+      if locale.present? && !LOCALES.include?(locale.to_s)
+        errors.add(:theme, "language must be one of #{LOCALES.join(", ")}")
       end
     end
 

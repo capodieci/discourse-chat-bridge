@@ -1,0 +1,14 @@
+# The words the sign in popup shows, and the three errors it can report.
+# Everything else falls back to server.en.yml.
+it:
+  chat_bridge:
+    popup:
+      title: "Accesso alla chat"
+      signing_in: "Accesso in corso..."
+      signed_in: "Accesso effettuato. Puoi chiudere questa finestra."
+      signed_in_return: "Accesso effettuato. Puoi chiudere questa finestra e tornare alla pagina da cui sei arrivato."
+      close: "Chiudi"
+    errors:
+      unknown_site: "Questo sito non è registrato per incorporare la chat."
+      invalid_token: "La sessione della chat è scaduta. Accedi di nuovo."
+      chat_disabled: "La chat non è attiva su questo forum."

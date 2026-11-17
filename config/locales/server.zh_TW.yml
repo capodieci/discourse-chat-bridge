@@ -1,0 +1,14 @@
+# The words the sign in popup shows, and the three errors it can report.
+# Everything else falls back to server.en.yml.
+zh_TW:
+  chat_bridge:
+    popup:
+      title: "聊天登入"
+      signing_in: "正在登入..."
+      signed_in: "已登入。你可以關閉此視窗。"
+      signed_in_return: "已登入。你可以關閉此視窗，並返回先前的頁面。"
+      close: "關閉"
+    errors:
+      unknown_site: "此網站未註冊嵌入聊天。"
+      invalid_token: "聊天工作階段已過期。請重新登入。"
+      chat_disabled: "此論壇未啟用聊天。"

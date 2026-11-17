@@ -181,6 +181,93 @@ C.check("an accent that is not a hex colour is refused, because it reaches a sty
   offenders.empty? ? true : "accepted: #{offenders.inspect}"
 end
 
+C.check("the button background and icon take hex colours, like the accent") do
+  site = ChatBridge::Site.new(name: "n", origin: "https://g.invalid", site_key: "k7",
+                              theme: { "launcher_bg" => "#111827", "launcher_icon" => "#fc1" })
+  out = site.theme_settings
+  C.eq([site.valid?, out["launcher_bg"], out["launcher_icon"]], [true, "#111827", "#fc1"])
+end
+
+C.check("a button colour that is not a hex colour is refused, for the same reason as the accent") do
+  bad = ["red", "#12345", "url(x)", "#111827; background:url(//evil)", "rgb(1,2,3)", "javascript:1"]
+  offenders =
+    %w[launcher_bg launcher_icon].flat_map do |key|
+      bad.select do |value|
+        ChatBridge::Site.new(name: "n", origin: "https://h.invalid", site_key: "k8", theme: { key => value }).valid?
+      end
+    end
+  offenders.empty? ? true : "accepted: #{offenders.inspect}"
+end
+
+C.check("the refusal names the field in words an administrator would use") do
+  site = ChatBridge::Site.new(name: "n", origin: "https://i.invalid", site_key: "k9", theme: { "launcher_bg" => "red" })
+  site.valid?
+  C.includes(site.errors.full_messages.join(" "), "button background must be a hex colour")
+end
+
+C.check("button colours default to not set, so an existing site looks exactly as it did") do
+  out = ChatBridge::Site.new(theme: { "accent" => "#0b6ecf" }).theme_settings
+  C.eq([out["launcher_bg"], out["launcher_icon"], out["locale"]], [nil, nil, nil])
+end
+
+C.check("a site can be fixed to one of the shipped languages") do
+  site = ChatBridge::Site.new(name: "n", origin: "https://j.invalid", site_key: "k10", theme: { "locale" => "zh-TW" })
+  C.eq([site.valid?, site.theme_settings["locale"]], [true, "zh-TW"])
+end
+
+C.check("a language we do not ship is refused, and never handed to the widget") do
+  site = ChatBridge::Site.new(name: "n", origin: "https://k.invalid", site_key: "k11", theme: { "locale" => "../../etc/passwd" })
+  C.eq([site.valid?, site.theme_settings["locale"]], [false, nil])
+end
+
+C.check("clean_theme keeps known keys, trims them, and drops blanks and anything unknown") do
+  out = ChatBridge::Site.clean_theme(
+    "accent" => " #0b6ecf ", "launcher_bg" => "", "launcher_icon" => nil, "position" => "bottom-left",
+    "launcher_label" => "  Talk to us ", "locale" => "it", "onload" => "alert(1)", "nested" => { "a" => 1 },
+  )
+  C.eq(out, { "accent" => "#0b6ecf", "position" => "bottom-left", "launcher_label" => "Talk to us", "locale" => "it" })
+end
+
+C.check("clean_theme stores the automatic language as nothing at all") do
+  C.eq(ChatBridge::Site.clean_theme("locale" => "auto", "accent" => "#abc"), { "accent" => "#abc" })
+end
+
+C.check("clean_theme leaves a bad colour in place, so validation can refuse it by name") do
+  site = ChatBridge::Site.new(name: "n", origin: "https://l.invalid", site_key: "k12")
+  site.theme = ChatBridge::Site.clean_theme("accent" => "red")
+  C.eq(site.valid?, false)
+end
+
+C.check("clean_theme accepts request parameters, symbol keys and nonsense alike") do
+  from_params = ChatBridge::Site.clean_theme(ActionController::Parameters.new("accent" => "#abc", "evil" => "x"))
+  from_symbols = ChatBridge::Site.clean_theme(accent: "#abc")
+  C.eq([from_params, from_symbols, ChatBridge::Site.clean_theme(nil), ChatBridge::Site.clean_theme("x")],
+       [{ "accent" => "#abc" }, { "accent" => "#abc" }, {}, {}])
+end
+
+C.check("only our own language codes become Rails locales") do
+  got = ["zh-CN", "it", "en", "xx", "", nil, "../x", "zh_CN"].map { |c| ChatBridge::Site.i18n_locale(c) }
+  C.eq(got, [:zh_CN, :it, :en, nil, nil, nil, nil, nil])
+end
+
+C.check("the sign in popup has its words in every shipped language") do
+  keys = %w[title signing_in signed_in signed_in_return close]
+  missing =
+    ChatBridge::Site::LOCALES.flat_map do |code|
+      locale = ChatBridge::Site.i18n_locale(code)
+      keys.reject { |k| I18n.t("chat_bridge.popup.#{k}", locale: locale, default: "").present? }.map { |k| "#{code}.#{k}" }
+    end
+  missing.empty? ? true : "missing: #{missing.inspect}"
+end
+
+C.check("the popup is really translated, not falling back to English") do
+  english = I18n.t("chat_bridge.popup.signed_in", locale: :en)
+  same = (ChatBridge::Site::LOCALES - ["en"]).select do |code|
+    I18n.t("chat_bridge.popup.signed_in", locale: ChatBridge::Site.i18n_locale(code)) == english
+  end
+  same.empty? ? true : "still English in: #{same.inspect}"
+end
+
 C.check("position must be one of the two corners") do
   good = ChatBridge::Site.new(name: "n", origin: "https://d.invalid", site_key: "k4", theme: { "position" => "bottom-left" }).valid?
   bad = ChatBridge::Site.new(name: "n", origin: "https://e.invalid", site_key: "k5", theme: { "position" => "middle" }).valid?

@@ -1,0 +1,14 @@
+# The words the sign in popup shows, and the three errors it can report.
+# Everything else falls back to server.en.yml.
+ru:
+  chat_bridge:
+    popup:
+      title: "Вход в чат"
+      signing_in: "Выполняется вход..."
+      signed_in: "Вход выполнен. Это окно можно закрыть."
+      signed_in_return: "Вход выполнен. Это окно можно закрыть и вернуться на страницу, с которой вы пришли."
+      close: "Закрыть"
+    errors:
+      unknown_site: "Этот сайт не зарегистрирован для встраивания чата."
+      invalid_token: "Сеанс чата истёк. Войдите снова."
+      chat_disabled: "Чат на этом форуме не включён."

@@ -15,12 +15,26 @@ ChatBridge::Engine.routes.draw do
   # directory, because Discourse serves that with a one year immutable cache
   # policy, which behind a CDN means a released fix reaches nobody.
   get "/widget.js" => "asset#widget"
-  get "/widget.strings.en.json" => "asset#strings"
+
+  # One file per language. The constraint keeps the segment to the shape of a
+  # language code, and the controller then checks it against the languages that
+  # actually exist. `format: false` stops Rails reading ".json" as a format and
+  # leaving the code with a dot in it.
+  get "/widget.strings.:locale.json" => "asset#strings",
+      :format => false,
+      :constraints => {
+        locale: /[A-Za-z]{2,3}(-[A-Za-z]{2,4})?/,
+      }
 
   # Everything else is JSON in by POST, JSON out, per project convention.
   # OPTIONS is matched so cross origin preflight requests get a real answer.
   match "/api/auth/begin" => "handshake#begin_handshake", :via => %i[post options]
   match "/api/auth/claim" => "handshake#claim", :via => %i[post options]
+
+  # Appearance and switches for the site the request came from. No token: it is
+  # what any visitor to that site is shown, and it has to be available before
+  # anyone signs in.
+  match "/api/site/config" => "site_config#show", :via => %i[post options]
 
   match "/api/session/me" => "session#me", :via => %i[post options]
   match "/api/session/logout" => "session#logout", :via => %i[post options]

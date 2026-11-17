@@ -21,12 +21,17 @@ module ChatBridge
 
       record, secret = ChatBridge::AuthNonce.begin!(site: site, state: params[:state])
 
+      # The language the panel is showing, passed on so the popup's own few
+      # words match it. Only a code from our own list is ever put in the URL.
+      lang = params[:lang].to_s
+      lang_param = ChatBridge::Site::LOCALES.include?(lang) ? "&lang=#{CGI.escape(lang)}" : ""
+
       render_bridge_ok(
         handshake_id: record.nonce,
         claim_secret: secret,
         expires_in: SiteSetting.chat_bridge_nonce_ttl_seconds.to_i,
         auth_url:
-          "#{::Discourse.base_url}/chat-bridge/auth/start?handshake=#{CGI.escape(record.nonce)}",
+          "#{::Discourse.base_url}/chat-bridge/auth/start?handshake=#{CGI.escape(record.nonce)}#{lang_param}",
       )
     end
 

@@ -1,0 +1,14 @@
+# The words the sign in popup shows, and the three errors it can report.
+# Everything else falls back to server.en.yml.
+ko:
+  chat_bridge:
+    popup:
+      title: "채팅 로그인"
+      signing_in: "로그인하는 중..."
+      signed_in: "로그인되었습니다. 이 창을 닫아도 됩니다."
+      signed_in_return: "로그인되었습니다. 이 창을 닫고 이전 페이지로 돌아가세요."
+      close: "닫기"
+    errors:
+      unknown_site: "이 웹사이트는 채팅을 삽입하도록 등록되어 있지 않습니다."
+      invalid_token: "채팅 세션이 만료되었습니다. 다시 로그인해 주세요."
+      chat_disabled: "이 포럼에서는 채팅이 활성화되어 있지 않습니다."

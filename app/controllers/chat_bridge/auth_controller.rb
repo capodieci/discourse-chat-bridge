@@ -68,6 +68,26 @@ module ChatBridge
 
     private
 
+    # The language for the few words this popup shows itself.
+    #
+    # The widget passes the language its panel is in, which matters when a
+    # visitor chose one their browser is not set to. Without it, Discourse has
+    # already picked a locale for this request the way it does for any page, and
+    # that is the right fallback. The parameter is matched against our own list
+    # before it is used, so a query string cannot name an arbitrary locale.
+    def popup_locale
+      ChatBridge::Site.i18n_locale(params[:lang]) || I18n.locale
+    end
+
+    def popup_text(key)
+      I18n.t("chat_bridge.popup.#{key}", locale: popup_locale)
+    end
+
+    # The value for the html lang attribute: zh-CN, where Rails says zh_CN.
+    def popup_lang_attribute
+      ERB::Util.html_escape(popup_locale.to_s.tr("_", "-"))
+    end
+
     # Discourse serves a Content Security Policy with
     # `script-src 'nonce-...' 'strict-dynamic'`. Under strict-dynamic, 'self'
     # and host allow lists are ignored, so neither an inline script nor an
@@ -94,14 +114,15 @@ module ChatBridge
     end
 
     def render_auth_failure(code)
-      message = I18n.t("chat_bridge.errors.#{code}", default: code.to_s.humanize)
+      message =
+        I18n.t("chat_bridge.errors.#{code}", locale: popup_locale, default: code.to_s.humanize)
       nonce = ERB::Util.html_escape(csp_nonce)
       html = <<~HTML
         <!doctype html>
-        <html lang="en"><head><meta charset="utf-8"><title>Chat sign in</title></head>
+        <html lang="#{popup_lang_attribute}"><head><meta charset="utf-8"><title>#{ERB::Util.html_escape(popup_text("title"))}</title></head>
         <body style="font:14px system-ui,sans-serif;padding:2rem;color:#333">
         <p>#{ERB::Util.html_escape(message)}</p>
-        <p><button id="close">Close</button></p>
+        <p><button id="close">#{ERB::Util.html_escape(popup_text("close"))}</button></p>
         <script nonce="#{nonce}">
         document.getElementById("close").addEventListener("click", function () { window.close(); });
         </script>
@@ -112,16 +133,26 @@ module ChatBridge
 
     def handshake_html(payload, target_origin, nonce)
       safe_nonce = ERB::Util.html_escape(nonce)
+
+      # Handed to the script as JSON rather than written into it as text. Rails
+      # escapes the characters that could end a script element, so a translation
+      # containing a quote or an angle bracket cannot break out of the string.
+      text = {
+        signed_in: popup_text("signed_in"),
+        signed_in_return: popup_text("signed_in_return"),
+      }
+
       <<~HTML
         <!doctype html>
-        <html lang="en">
-        <head><meta charset="utf-8"><title>Signing in</title></head>
+        <html lang="#{popup_lang_attribute}">
+        <head><meta charset="utf-8"><title>#{ERB::Util.html_escape(popup_text("title"))}</title></head>
         <body style="font:14px system-ui,sans-serif;padding:2rem;color:#333">
-        <p id="status">Signing you in...</p>
+        <p id="status">#{ERB::Util.html_escape(popup_text("signing_in"))}</p>
         <script nonce="#{safe_nonce}">
         (function () {
           var payload = #{payload.to_json};
           var target = #{target_origin.to_json};
+          var text = #{text.to_json};
           var status = document.getElementById("status");
 
           // The opener is often gone by now: Discourse's login page severs it
@@ -135,7 +166,7 @@ module ChatBridge
             /* nothing to do, the widget is already polling */
           }
 
-          status.textContent = "Signed in. You can close this window.";
+          status.textContent = text.signed_in;
 
           // Try to close regardless. A window opened by script may close itself,
           // though a browser can refuse after a cross origin navigation, which
@@ -143,7 +174,7 @@ module ChatBridge
           setTimeout(function () {
             try { window.close(); } catch (e) {}
             setTimeout(function () {
-              status.textContent = "Signed in. You can close this window and return to the page you came from.";
+              status.textContent = text.signed_in_return;
             }, 600);
           }, 400);
         })();

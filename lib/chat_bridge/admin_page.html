@@ -7,10 +7,11 @@
 <style>
   :root { color-scheme: light dark; --line:#e4e4e7; --muted:#71717a; --bg:#fff; --fg:#18181b;
           --accent:#0b6ecf; --warn-bg:#fff7ed; --warn-fg:#9a3412; --warn-line:#fed7aa;
-          --ok:#15803d; --bad:#b91c1c; --soft:#f4f4f5; }
+          --ok:#15803d; --bad:#b91c1c; --soft:#f4f4f5; --stage:#eef0f3; }
   @media (prefers-color-scheme: dark) {
     :root { --line:#3f3f46; --muted:#a1a1aa; --bg:#18181b; --fg:#e4e4e7; --soft:#27272a;
-            --warn-bg:#2a1c0f; --warn-fg:#fdba74; --warn-line:#7c2d12; }
+            --warn-bg:#2a1c0f; --warn-fg:#fdba74; --warn-line:#7c2d12; --stage:#0f0f11;
+            --ok:#4ade80; --bad:#f87171; }
   }
   * { box-sizing: border-box; }
   body { margin:0; padding:2rem 1rem 5rem; background:var(--bg); color:var(--fg);
@@ -19,20 +20,42 @@
   h1 { font-size:1.5rem; margin:0 0 .25rem; }
   .sub { color:var(--muted); margin:0 0 1.5rem; }
   .bar { display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; margin-bottom:1.25rem; }
-  .pill { font-size:.8rem; padding:.2rem .55rem; border-radius:999px; background:var(--soft); color:var(--muted); }
+  .pill { font-size:.8rem; padding:.2rem .55rem; border-radius:999px; background:var(--soft);
+          color:var(--muted); white-space:nowrap; }
   .pill.ok { color:var(--ok); } .pill.bad { color:var(--bad); }
   button { font:inherit; border:1px solid var(--line); background:var(--soft); color:var(--fg);
            border-radius:8px; padding:.45rem .8rem; cursor:pointer; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
   button.danger { color:var(--bad); }
+  button.link { border:none; background:none; padding:.2rem .3rem; color:var(--muted);
+                font-size:.8rem; text-decoration:underline; }
   button:disabled { opacity:.5; cursor:default; }
-  .card { border:1px solid var(--line); border-radius:12px; padding:1.1rem 1.25rem; margin-bottom:1rem; }
-  .card h2 { font-size:1.05rem; margin:0; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
-  .card h2 .origin { color:var(--muted); font-weight:400; font-size:.9rem; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(13rem,1fr)); gap:.9rem; margin-top:1rem; }
+  .card { border:1px solid var(--line); border-radius:12px; margin-bottom:1rem; }
+  .card > summary { list-style:none; cursor:pointer; padding:.9rem 1.25rem; display:flex;
+                    align-items:center; gap:.7rem; flex-wrap:wrap; }
+  .card > summary::-webkit-details-marker { display:none; }
+  .card > summary::after { content:"Edit"; margin-left:auto; font-size:.85rem; color:var(--muted);
+                           border:1px solid var(--line); border-radius:8px; padding:.25rem .7rem; }
+  .card[open] > summary::after { content:"Close"; }
+  .card > summary .name { font-weight:600; font-size:1.05rem; }
+  .card > summary .origin { color:var(--muted); font-size:.9rem; overflow-wrap:anywhere; }
+  .card .inner { padding:0 1.25rem 1.1rem; border-top:1px solid var(--line); }
+  .card.plain { padding:1.1rem 1.25rem; }
+  .card.plain h2 { font-size:1.05rem; margin:0 0 .2rem; }
+  h3 { font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
+       margin:1.4rem 0 0; font-weight:600; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(13rem,1fr)); gap:.9rem; margin-top:.8rem; }
   label { display:block; font-size:.82rem; color:var(--muted); margin-bottom:.25rem; }
-  input[type=text], select { width:100%; font:inherit; padding:.45rem .55rem; border:1px solid var(--line);
-                             border-radius:8px; background:var(--bg); color:var(--fg); }
+  input[type=text], input[type=search], select {
+    width:100%; font:inherit; padding:.45rem .55rem; border:1px solid var(--line);
+    border-radius:8px; background:var(--bg); color:var(--fg); }
+  .colour { display:flex; gap:.4rem; align-items:center; }
+  .colour input[type=color] { flex:0 0 auto; width:2.4rem; height:2.25rem; padding:.15rem;
+                              border:1px solid var(--line); border-radius:8px; background:var(--bg);
+                              cursor:pointer; }
+  .colour input[type=text] { flex:1; min-width:0; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+                             font-size:.85rem; }
+  .colour input.invalid { border-color:var(--bad); }
   .checks { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:.9rem; }
   .checks label { display:flex; align-items:center; gap:.4rem; color:var(--fg); font-size:.9rem; margin:0; }
   .tag { margin-top:1rem; }
@@ -47,8 +70,34 @@
   .msg.err { background:#fdecea; color:#8b1a10; }
   .msg.ok { background:#eaf7ee; color:#14532d; }
   .empty { color:var(--muted); padding:1.5rem 0; }
-  .swatch { width:1.6rem; height:1.6rem; border-radius:6px; border:1px solid var(--line); flex:0 0 auto; }
   .hint { font-size:.78rem; color:var(--muted); margin-top:.3rem; }
+  .hint code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.95em; }
+
+  /* The preview. These are the widget's own shapes at the widget's own sizes,
+     drawn with the same custom properties, so what is shown here is what a
+     visitor gets. */
+  .launcher { --cb-accent:#0b6ecf; border-radius:50%; display:inline-flex; align-items:center;
+              justify-content:center; flex:0 0 auto;
+              background:var(--cb-launcher-bg,var(--cb-accent)); color:var(--cb-launcher-fg,#fff);
+              box-shadow:0 6px 20px rgba(0,0,0,.25); width:56px; height:56px; }
+  .launcher svg { width:26px; height:26px; fill:currentColor; }
+  .launcher.sm { width:34px; height:34px; box-shadow:0 2px 6px rgba(0,0,0,.22); }
+  .launcher.sm svg { width:16px; height:16px; }
+  .stage { --cb-accent:#0b6ecf; margin-top:.8rem; background:var(--stage); border:1px solid var(--line);
+           border-radius:10px; padding:1rem; display:flex; align-items:flex-end; gap:1rem; flex-wrap:wrap; }
+  .stage.left { flex-direction:row-reverse; justify-content:flex-end; }
+  .stage .panel { flex:1 1 14rem; max-width:20rem; border-radius:10px; overflow:hidden; background:var(--bg);
+                  box-shadow:0 6px 20px rgba(0,0,0,.18); }
+  .stage .panel .hd { background:var(--cb-accent); color:var(--cb-on-accent,#fff); padding:.6rem .8rem;
+                      font-size:.9rem; font-weight:600; display:flex; gap:.5rem; }
+  .stage .panel .hd span:first-child { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .stage .panel .bd { padding:.7rem .8rem; font-size:.8rem; color:var(--muted); display:flex;
+                      align-items:center; justify-content:space-between; gap:.6rem; }
+  .stage .panel .send { background:var(--cb-accent); color:var(--cb-on-accent,#fff); border-radius:7px;
+                        padding:.3rem .7rem; font-weight:600; font-size:.8rem; }
+  .stage .note { flex:1 1 100%; font-size:.78rem; color:var(--muted); }
+  #filter-row { margin:1rem 0 0; max-width:22rem; }
+  [hidden] { display:none !important; }
 </style>
 </head>
 <body>
@@ -58,7 +107,7 @@
 
   <div class="bar" id="status"></div>
   <div id="audio-warning"></div>
-  <div id="message"></div>
+  <div id="message" role="status" aria-live="polite"></div>
 
   <div class="warn">
     <strong>Only add websites you control.</strong>
@@ -68,11 +117,33 @@
     accepting their security as your own.
   </div>
 
-  <div class="row" style="margin-top:1rem">
+  <div class="row" id="add-row">
     <button class="primary" id="add">Add a website</button>
   </div>
 
-  <div id="sites"></div>
+  <form class="card plain" id="add-form" hidden>
+    <h2>Add a website</h2>
+    <div class="grid">
+      <div><label for="add-name">Name</label>
+        <input type="text" id="add-name" placeholder="Marketing site" autocomplete="off">
+        <div class="hint">Only shown on this page, to tell your websites apart.</div></div>
+      <div><label for="add-origin">Website address</label>
+        <input type="text" id="add-origin" placeholder="https://example.com" autocomplete="off" required>
+        <div class="hint">A pasted page address is fine, it is trimmed to scheme and domain.
+          A subdomain is a separate website: <code>www.example.com</code> and
+          <code>example.com</code> each need their own entry.</div></div>
+    </div>
+    <div class="row">
+      <button class="primary" type="submit" id="add-submit">Add website</button>
+      <button type="button" id="add-cancel">Cancel</button>
+    </div>
+  </form>
+
+  <div id="filter-row" hidden>
+    <input type="search" id="filter" placeholder="Filter websites by name or address" aria-label="Filter websites">
+  </div>
+
+  <div id="sites" style="margin-top:1rem"></div>
 </div>
 <script nonce="__NONCE__">
 window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
@@ -81,7 +152,15 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
 (function () {
   "use strict";
   var API = "/admin/plugins/chat-bridge/sites";
-  var state = { sites: [], positions: [], widget_url: "", loading: true };
+  var DEFAULT_ACCENT = "#0b6ecf";
+  var DARK_TEXT = "#1b1b1b";
+  var HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+  var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/></svg>';
+
+  // The filter box only earns its space once the list is long enough to scroll.
+  var FILTER_FROM = 6;
+
+  var state = { sites: [], positions: [], locales: [], channels: [], loading: true, open: {}, filter: "" };
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -102,7 +181,7 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (json) {
         if (!res.ok) {
-          var errs = json.errors || [json.error] || ["Request failed"];
+          var errs = json.errors || [json.error];
           throw new Error([].concat(errs).filter(Boolean).join(", ") || "Request failed");
         }
         return json;
@@ -115,19 +194,86 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
       text ? '<div class="msg ' + kind + '">' + esc(text) + "</div>" : "";
   }
 
+  /* ---------------------------------------------------------------- colour */
+
+  function fullHex(value) {
+    var m = HEX.exec(String(value || "").trim());
+    if (!m) return null;
+    var h = m[1].toLowerCase();
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    return "#" + h;
+  }
+
+  // The same rule the widget uses, with the same threshold, so the preview and
+  // the real thing agree about when white text stops being readable.
+  function readableOn(value) {
+    var hex = fullHex(value);
+    if (!hex) return null;
+    var weights = [0.2126, 0.7152, 0.0722];
+    var luminance = 0;
+    for (var i = 0; i < 3; i++) {
+      var c = parseInt(hex.substr(1 + i * 2, 2), 16) / 255;
+      c = c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      luminance += c * weights[i];
+    }
+    return luminance > 0.45 ? DARK_TEXT : "#ffffff";
+  }
+
+  // What the widget will actually draw for a given set of fields, including
+  // what each empty field falls back to.
+  function effective(theme) {
+    var accent = fullHex(theme.accent) || DEFAULT_ACCENT;
+    var bg = fullHex(theme.launcher_bg) || accent;
+    return {
+      accent: accent,
+      onAccent: readableOn(accent),
+      launcher_bg: bg,
+      launcher_icon: fullHex(theme.launcher_icon) || readableOn(bg)
+    };
+  }
+
+  function paint(el, theme) {
+    var e = effective(theme);
+    el.style.setProperty("--cb-accent", e.accent);
+    el.style.setProperty("--cb-on-accent", e.onAccent);
+    el.style.setProperty("--cb-launcher-bg", e.launcher_bg);
+    el.style.setProperty("--cb-launcher-fg", e.launcher_icon);
+  }
+
+  /* ------------------------------------------------------------------ data */
+
   function load() {
     return req("GET", API).then(function (data) {
       state.sites = data.sites || [];
       state.positions = data.positions || ["bottom-right", "bottom-left"];
-      state.widget_url = data.widget_url || "";
+      state.locales = data.locales || [];
       state.channels = data.channels || [];
       state.missing_audio = data.missing_audio_extensions || [];
       state.bridge_enabled = data.bridge_enabled;
       state.chat_enabled = data.chat_enabled;
       state.loading = false;
+      // With a single website there is nothing to pick between, so it is shown
+      // ready to edit.
+      if (state.sites.length === 1) state.open[state.sites[0].id] = true;
       render();
-    }).catch(function (e) { say(e.message, "err"); });
+    }).catch(function (e) { state.loading = false; render(); say(e.message, "err"); });
   }
+
+  function siteById(id) {
+    for (var i = 0; i < state.sites.length; i++) {
+      if (String(state.sites[i].id) === String(id)) return state.sites[i];
+    }
+    return null;
+  }
+
+  function localeName(code) {
+    for (var i = 0; i < state.locales.length; i++) {
+      if (state.locales[i].code === code) return state.locales[i].name;
+    }
+    return code;
+  }
+
+  /* --------------------------------------------------------------- render */
 
   function renderAudioWarning() {
     var el = document.getElementById("audio-warning");
@@ -168,34 +314,107 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
     return out;
   }
 
+  function localeOptions(s) {
+    var fixed = s.theme.locale || "";
+    var out = '<option value="auto"' + (fixed ? "" : " selected") +
+              ">Each visitor's browser language</option>";
+    state.locales.forEach(function (l) {
+      out += '<option value="' + esc(l.code) + '"' + (fixed === l.code ? " selected" : "") +
+             ">Always " + esc(l.name) + "</option>";
+    });
+    return out;
+  }
+
+  // One colour: a picker for people who think in colours and a text field for
+  // people who were handed a hex code. An empty text field means "not set", and
+  // the picker then shows what the widget falls back to, so it never lies about
+  // the colour in use.
+  function colourField(key, label, value, hint) {
+    return (
+      "<div><label>" + esc(label) + "</label>" +
+      '<div class="colour">' +
+        '<input type="color" data-pick="' + key + '" aria-label="' + esc(label) + ', picker">' +
+        '<input type="text" data-f="' + key + '" placeholder="Default" spellcheck="false" ' +
+          'autocomplete="off" value="' + esc(value || "") + '" aria-label="' + esc(label) + ', hex code">' +
+        '<button type="button" class="link" data-clear="' + key + '">Reset</button>' +
+      "</div>" +
+      '<div class="hint">' + hint + "</div></div>"
+    );
+  }
+
+  function summaryPills(s) {
+    return (
+      '<span class="pill ' + (s.enabled ? "ok" : "bad") + '">' + (s.enabled ? "enabled" : "disabled") + "</span>" +
+      '<span class="pill">' + s.active_sessions + " signed in</span>" +
+      '<span class="pill">' + (s.theme.locale ? esc(localeName(s.theme.locale)) : "browser language") + "</span>"
+    );
+  }
+
   function renderSite(s) {
     var opts = state.positions.map(function (p) {
       return '<option value="' + esc(p) + '"' +
-             (s.theme.position === p ? " selected" : "") + ">" + esc(p) + "</option>";
+             (s.theme.position === p ? " selected" : "") + ">" +
+             esc(p === "bottom-left" ? "Bottom left" : p === "bottom-right" ? "Bottom right" : p) +
+             "</option>";
     }).join("");
 
-    var cors = s.in_cors_origins
+    var cors = s.in_cors_origins || !s.enabled
       ? ""
       : '<div class="warn"><strong>This origin is missing from cors_origins</strong>' +
         "The browser will refuse the connection until it is added. Saving this site adds it back.</div>";
 
     return (
-      '<div class="card" data-id="' + s.id + '">' +
-        '<h2><span class="swatch" style="background:' + esc(s.theme.accent || "#0b6ecf") + '"></span>' +
-        esc(s.name) + ' <span class="origin">' + esc(s.origin) + "</span>" +
-        '<span class="pill ' + (s.enabled ? "ok" : "bad") + '">' + (s.enabled ? "enabled" : "disabled") + "</span>" +
-        '<span class="pill">' + s.active_sessions + ' signed in</span></h2>' +
+      '<details class="card" data-id="' + s.id + '"' + (state.open[s.id] ? " open" : "") + ">" +
+        "<summary>" +
+          '<span class="launcher sm" data-paint>' + ICON + "</span>" +
+          '<span class="name">' + esc(s.name) + "</span>" +
+          '<span class="origin">' + esc(s.origin) + "</span>" +
+          summaryPills(s) +
+        "</summary>" +
+        '<div class="inner">' +
         cors +
+
+        "<h3>Website</h3>" +
         '<div class="grid">' +
           '<div><label>Name</label><input type="text" data-f="name" value="' + esc(s.name) + '"></div>' +
           '<div><label>Website origin</label><input type="text" data-f="origin" value="' + esc(s.origin) + '">' +
             '<div class="hint">Scheme and domain only, no path. This site can act as your ' +
             "members, so only list sites you control.</div></div>" +
-          '<div><label>Accent colour</label><input type="text" data-f="accent" placeholder="#0b6ecf" value="' +
-            esc(s.theme.accent || "") + '"><div class="hint">Hex only, for example #0b6ecf.</div></div>' +
+        "</div>" +
+
+        "<h3>Chat button</h3>" +
+        '<div class="grid">' +
+          colourField("launcher_bg", "Button background", s.theme.launcher_bg,
+            "The round button in the corner. Empty means the same as the accent colour.") +
+          colourField("launcher_icon", "Button icon", s.theme.launcher_icon,
+            "The speech bubble inside it. Empty means white or near black, whichever reads better on the background.") +
           '<div><label>Corner</label><select data-f="position">' + opts + "</select></div>" +
-          '<div><label>Panel title</label><input type="text" data-f="launcher_label" placeholder="Community chat" value="' +
-            esc(s.theme.launcher_label || "") + '"></div>' +
+        "</div>" +
+
+        "<h3>Chat panel</h3>" +
+        '<div class="grid">' +
+          colourField("accent", "Accent colour", s.theme.accent,
+            "The panel header, the buttons and the links. Empty means the default blue.") +
+          '<div><label>Panel title</label><input type="text" data-f="launcher_label" maxlength="60" ' +
+            'placeholder="Community chat" value="' + esc(s.theme.launcher_label || "") + '">' +
+            '<div class="hint">Empty means "Community chat", translated for each visitor. ' +
+            "A title typed here is shown exactly as typed, in every language.</div></div>" +
+          '<div><label>Language</label><select data-f="locale">' + localeOptions(s) + "</select>" +
+            '<div class="hint">A visitor can still pick another language in the widget\'s own ' +
+            "settings. A single page can also force one by adding <code>data-lang=\"fr\"</code> " +
+            "to its script tag.</div></div>" +
+        "</div>" +
+
+        '<div class="stage' + (s.theme.position === "bottom-left" ? " left" : "") + '" data-paint data-stage>' +
+          '<div class="panel"><div class="hd"><span data-preview-title>' +
+            esc(s.theme.launcher_label || "Community chat") + "</span><span>&times;</span></div>" +
+            '<div class="bd"><span>Write a message</span><span class="send">Send</span></div></div>' +
+          '<span class="launcher">' + ICON + "</span>" +
+          '<div class="note">Preview. It updates as you change the fields, and nothing is saved until you press Save.</div>' +
+        "</div>" +
+
+        "<h3>What visitors can do</h3>" +
+        '<div class="grid">' +
           '<div><label>Channels</label><select data-f="channel">' + channelOptions(s) + "</select>" +
             '<div class="hint">Pinning to one channel suits a support widget. Everyone in that ' +
             "channel sees everyone's messages, and direct messages are turned off for such a " +
@@ -210,6 +429,7 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
           '<label><input type="checkbox" data-f="enabled"' +
             (s.enabled ? " checked" : "") + "> Enabled</label>" +
         "</div>" +
+
         '<div class="tag"><label>Paste this into that website, once, before the closing body tag</label>' +
           "<code>" + esc(s.script_tag) + "</code></div>" +
         '<div class="row">' +
@@ -217,19 +437,74 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
           '<button data-act="copy">Copy script tag</button>' +
           '<button class="danger" data-act="delete">Remove</button>' +
         "</div>" +
-      "</div>"
+        "</div>" +
+      "</details>"
     );
+  }
+
+  // Brings a card's pickers and its preview in line with its text fields. Run
+  // after every render and every keystroke in a colour field.
+  function syncCard(card) {
+    var theme = readCard(card).theme;
+    var e = effective(theme);
+
+    ["accent", "launcher_bg", "launcher_icon"].forEach(function (key) {
+      var text = card.querySelector('[data-f="' + key + '"]');
+      var pick = card.querySelector('[data-pick="' + key + '"]');
+      var value = text.value.trim();
+      text.classList.toggle("invalid", value !== "" && !fullHex(value));
+      pick.value = e[key];
+    });
+
+    Array.prototype.forEach.call(card.querySelectorAll("[data-paint]"), function (el) {
+      paint(el, theme);
+    });
+
+    var stage = card.querySelector("[data-stage]");
+    stage.classList.toggle("left", theme.position === "bottom-left");
+    card.querySelector("[data-preview-title]").textContent = theme.launcher_label || "Community chat";
+  }
+
+  function syncAll() {
+    Array.prototype.forEach.call(document.querySelectorAll("details.card"), syncCard);
+  }
+
+  function applyFilter() {
+    var term = state.filter.trim().toLowerCase();
+    Array.prototype.forEach.call(document.querySelectorAll("details.card"), function (card) {
+      var s = siteById(card.getAttribute("data-id"));
+      var hit = !term || !s || (s.name + " " + s.origin).toLowerCase().indexOf(term) !== -1;
+      card.hidden = !hit;
+    });
   }
 
   function render() {
     renderStatus();
     var el = document.getElementById("sites");
+    document.getElementById("filter-row").hidden = state.sites.length < FILTER_FROM;
+
     if (state.loading) { el.innerHTML = '<div class="empty">Loading.</div>'; return; }
     if (!state.sites.length) {
       el.innerHTML = '<div class="empty">No websites yet. Add one to get a script tag.</div>';
       return;
     }
     el.innerHTML = state.sites.map(renderSite).join("");
+    syncAll();
+    applyFilter();
+  }
+
+  // Redraws one card and leaves the others alone, so saving one website does
+  // not throw away what was half typed into another.
+  function replaceCard(card, site) {
+    for (var i = 0; i < state.sites.length; i++) {
+      if (state.sites[i].id === site.id) state.sites[i] = site;
+    }
+    var holder = document.createElement("div");
+    holder.innerHTML = renderSite(site);
+    var fresh = holder.firstChild;
+    card.parentNode.replaceChild(fresh, card);
+    syncCard(fresh);
+    renderStatus();
   }
 
   function readCard(card) {
@@ -239,28 +514,96 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
       name: v("name"),
       origin: v("origin"),
       enabled: c("enabled"),
-      theme: { accent: v("accent"), position: v("position"), launcher_label: v("launcher_label") },
+      theme: {
+        accent: v("accent"),
+        launcher_bg: v("launcher_bg"),
+        launcher_icon: v("launcher_icon"),
+        position: v("position"),
+        launcher_label: v("launcher_label"),
+        locale: v("locale")
+      },
       features: { direct_messages: c("direct_messages"), voice_messages: c("voice_messages") },
       allowed_channel_ids: v("channel") ? [v("channel")] : []
     };
   }
 
+  /* ----------------------------------------------------------------- events */
+
+  function showAddForm(show) {
+    document.getElementById("add-form").hidden = !show;
+    document.getElementById("add-row").hidden = show;
+    if (show) document.getElementById("add-name").focus();
+  }
+
+  document.getElementById("add").addEventListener("click", function () { say("", ""); showAddForm(true); });
+  document.getElementById("add-cancel").addEventListener("click", function () { showAddForm(false); });
+
+  document.getElementById("add-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var nameEl = document.getElementById("add-name");
+    var originEl = document.getElementById("add-origin");
+    var origin = originEl.value.trim();
+    if (!origin) { originEl.focus(); return; }
+
+    // People type "example.com". An origin needs a scheme, and https is the
+    // only one the server accepts outside localhost, so it is filled in rather
+    // than refused.
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(origin)) origin = "https://" + origin;
+
+    var button = document.getElementById("add-submit");
+    button.disabled = true;
+    say("", "");
+
+    req("POST", API, { name: nameEl.value.trim() || origin, origin: origin })
+      .then(function (data) {
+        button.disabled = false;
+        nameEl.value = "";
+        originEl.value = "";
+        showAddForm(false);
+        state.sites.push(data.site);
+        state.open[data.site.id] = true;
+        render();
+        say("Website added, and its origin allowed. Paste its script tag into that website to switch the chat on.", "ok");
+        var card = document.querySelector('details.card[data-id="' + data.site.id + '"]');
+        if (card && card.scrollIntoView) card.scrollIntoView({ block: "start", behavior: "smooth" });
+      })
+      .catch(function (e) { button.disabled = false; say(e.message, "err"); });
+  });
+
+  document.getElementById("filter").addEventListener("input", function (event) {
+    state.filter = event.target.value;
+    applyFilter();
+  });
+
+  // toggle does not bubble, so it is caught on the way down instead.
+  document.addEventListener("toggle", function (event) {
+    var card = event.target;
+    if (!card.matches || !card.matches("details.card")) return;
+    state.open[card.getAttribute("data-id")] = card.open;
+  }, true);
+
+  document.addEventListener("input", function (event) {
+    var card = event.target.closest && event.target.closest("details.card");
+    if (!card) return;
+
+    var pick = event.target.getAttribute("data-pick");
+    if (pick) card.querySelector('[data-f="' + pick + '"]').value = event.target.value;
+
+    syncCard(card);
+  });
+
   document.addEventListener("click", function (event) {
-    var addBtn = event.target.closest("#add");
-    if (addBtn) {
-      var origin = window.prompt("Website origin, for example https://example.com");
-      if (!origin) return;
-      var name = window.prompt("A name for it") || origin;
-      say("", "");
-      req("POST", API, { name: name, origin: origin.trim() })
-        .then(function () { say("Website added, and its origin allowed.", "ok"); return load(); })
-        .catch(function (e) { say(e.message, "err"); });
+    var clear = event.target.closest("[data-clear]");
+    if (clear) {
+      var owner = clear.closest("details.card");
+      owner.querySelector('[data-f="' + clear.getAttribute("data-clear") + '"]').value = "";
+      syncCard(owner);
       return;
     }
 
     var btn = event.target.closest("[data-act]");
     if (!btn) return;
-    var card = btn.closest(".card");
+    var card = btn.closest("details.card");
     var id = card.getAttribute("data-id");
     var act = btn.getAttribute("data-act");
 
@@ -268,7 +611,11 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
       say("", "");
       btn.disabled = true;
       req("PUT", API + "/" + id, readCard(card))
-        .then(function () { say("Saved.", "ok"); return load(); })
+        .then(function (data) {
+          state.open[id] = true;
+          replaceCard(card, data.site);
+          say("Saved " + data.site.name + ". Visitors get the change the next time they load a page.", "ok");
+        })
         .catch(function (e) { say(e.message, "err"); btn.disabled = false; });
     } else if (act === "copy") {
       var code = card.querySelector(".tag code").textContent;
@@ -280,7 +627,12 @@ window.__CB = { csrf: "__CSRF__", base: "__BASE__" };
       var origin = card.querySelector('[data-f="origin"]').value;
       if (!window.confirm("Remove " + origin + "? Its visitors will be signed out and its origin will stop being allowed.")) return;
       req("DELETE", API + "/" + id)
-        .then(function () { say("Removed.", "ok"); return load(); })
+        .then(function () {
+          state.sites = state.sites.filter(function (s) { return String(s.id) !== String(id); });
+          delete state.open[id];
+          render();
+          say("Removed.", "ok");
+        })
         .catch(function (e) { say(e.message, "err"); });
     }
   });

@@ -17,6 +17,11 @@
  *   never sees an API key.
  * - All user visible text comes from the STRINGS table so translation is a matter
  *   of adding a table, not editing code.
+ * - The interface follows the visitor's browser language. English is inlined,
+ *   every other language is a JSON file fetched only by the visitors who need it.
+ * - This file stays plain ASCII. It is loaded by pages we do not control, some of
+ *   which declare an unusual charset, so anything outside ASCII is written as a
+ *   \u escape rather than trusted to survive the trip.
  */
 (function () {
   "use strict";
@@ -39,7 +44,9 @@
   var API = BRIDGE + "/chat-bridge/api";
   var STORAGE_KEY = "dcb.token." + SITE_KEY;
 
-  var STRINGS = {
+  // The English table. It is the source of truth for which keys exist, and the
+  // fallback for any key a translation is missing.
+  var EN = {
     bubble_label: "Open chat",
     panel_title: "Community chat",
     close: "Close",
@@ -73,6 +80,8 @@
     appearance_system: "Follow my system",
     appearance_light: "Always light",
     appearance_dark: "Always dark",
+    language: "Language",
+    language_auto: "Follow my browser",
     mute_channel: "Mute this conversation",
     muted: "Muted",
     done: "Done",
@@ -94,35 +103,197 @@
     error_chat_disabled: "Chat is currently disabled on the forum."
   };
 
+  // What is on screen right now: English, overlaid with the active language,
+  // overlaid with the integrator's own table if they supplied one.
+  var STRINGS = EN;
+
   function t(key) {
-    return STRINGS[key] || key;
+    return STRINGS[key] || EN[key] || key;
   }
 
-  // English is inlined above so the widget is useful with one script tag and no
-  // extra round trip. Another language is a JSON file with the same keys, named
-  // on the script tag:
-  //
-  //   <script src="...widget.js" data-site-key="..." data-strings-url="/nl.json">
-  //
-  // Anything missing from that file falls back to the English string, so a
-  // partial translation degrades key by key rather than breaking the interface.
-  function loadStrings() {
-    var url = SCRIPT.getAttribute("data-strings-url");
-    if (!url) return Promise.resolve();
+  /* -------------------------------------------------------------- language
+   *
+   * The languages this widget ships, each named in its own language so a
+   * visitor can find theirs in the list whatever the interface is currently
+   * showing. Every code except "en" has a file next to this script,
+   * widget.strings.<code>.json, with the same keys as the EN table above.
+   *
+   * To add a language: add its file, add it here, and add it to
+   * ChatBridge::Site::LOCALE_NAMES on the server. tests/loadcheck.rb fails if
+   * the three disagree, or if a file is missing a key.
+   */
+  var LOCALES = ["en", "zh-CN", "zh-TW", "ru", "it", "es", "fr", "ja", "ko"];
 
-    return fetch(new URL(url, window.location.href).href, { credentials: "omit" })
+  var LOCALE_NAMES = {
+    "en": "English",
+    "zh-CN": "\u7b80\u4f53\u4e2d\u6587",
+    "zh-TW": "\u7e41\u9ad4\u4e2d\u6587",
+    "ru": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
+    "it": "Italiano",
+    "es": "Espa\u00f1ol",
+    "fr": "Fran\u00e7ais",
+    "ja": "\u65e5\u672c\u8a9e",
+    "ko": "\ud55c\uad6d\uc5b4"
+  };
+
+  var activeLocale = "en";
+  var wantedLocale = "en";
+  var localeTables = {};
+  var customTable = null;
+
+  // Maps whatever a browser, a script tag or an administrator supplies onto one
+  // of the languages above, or null when there is no reasonable match.
+  //
+  // Chinese needs more than a prefix match. The script matters more than the
+  // region, so zh-Hant anywhere is Traditional, and Taiwan, Hong Kong and Macau
+  // read Traditional even when the tag does not say so. Everything else that
+  // starts with zh, including a bare "zh", is Simplified.
+  function matchLocale(tag) {
+    if (!tag) return null;
+    var lower = String(tag).toLowerCase().replace(/_/g, "-");
+    var i;
+
+    for (i = 0; i < LOCALES.length; i++) {
+      if (LOCALES[i].toLowerCase() === lower) return LOCALES[i];
+    }
+
+    var parts = lower.split("-");
+    if (parts[0] === "zh") {
+      if (parts.indexOf("hant") !== -1) return "zh-TW";
+      if (parts.indexOf("hans") !== -1) return "zh-CN";
+      if (parts.indexOf("tw") !== -1 || parts.indexOf("hk") !== -1 || parts.indexOf("mo") !== -1) {
+        return "zh-TW";
+      }
+      return "zh-CN";
+    }
+
+    for (i = 0; i < LOCALES.length; i++) {
+      if (LOCALES[i].toLowerCase() === parts[0]) return LOCALES[i];
+    }
+    return null;
+  }
+
+  // navigator.languages is the visitor's list in order of preference, so a
+  // browser set to German then French gets French here rather than English.
+  function browserLocale() {
+    var wanted = [];
+    try {
+      if (navigator.languages && navigator.languages.length) {
+        wanted = Array.prototype.slice.call(navigator.languages);
+      } else if (navigator.language || navigator.userLanguage) {
+        wanted = [navigator.language || navigator.userLanguage];
+      }
+    } catch (e) {
+      wanted = [];
+    }
+
+    for (var i = 0; i < wanted.length; i++) {
+      var match = matchLocale(wanted[i]);
+      if (match) return match;
+    }
+    return "en";
+  }
+
+  // Most specific wish first:
+  //
+  //   1. what this visitor picked in the widget's own settings
+  //   2. data-lang on the script tag, for a page that knows its own language,
+  //      for example a /fr/ section of a multilingual site
+  //   3. a language the administrator fixed for this website
+  //   4. the visitor's browser
+  //
+  // "auto" at any level means "no opinion, ask the next one".
+  function resolveLocale() {
+    var picked = state.prefs && state.prefs.language;
+    if (picked && picked !== "auto" && matchLocale(picked)) return matchLocale(picked);
+
+    var attr = SCRIPT.getAttribute("data-lang");
+    if (attr && attr !== "auto" && matchLocale(attr)) return matchLocale(attr);
+
+    var fixed = state.site && state.site.theme && state.site.theme.locale;
+    if (fixed && fixed !== "auto" && matchLocale(fixed)) return matchLocale(fixed);
+
+    return browserLocale();
+  }
+
+  // Only string values are taken from a fetched table. It is JSON from a URL,
+  // and although every string is escaped before it reaches the page, a table
+  // carrying objects or numbers is malformed and is better ignored than trusted.
+  function fetchTable(url) {
+    return fetch(url, { credentials: "omit" })
       .then(function (res) {
         return res.ok ? res.json() : null;
       })
       .then(function (table) {
-        if (!table) return;
+        if (!table || typeof table !== "object") return null;
+        var clean = {};
         Object.keys(table).forEach(function (key) {
-          if (typeof table[key] === "string") STRINGS[key] = table[key];
+          if (typeof table[key] === "string" && table[key]) clean[key] = table[key];
         });
+        return clean;
       })
       .catch(function () {
-        /* a missing or malformed table leaves English in place */
+        /* a missing or malformed table leaves the current language in place */
+        return null;
       });
+  }
+
+  function activateLocale(code) {
+    activeLocale = code;
+
+    var next = {};
+    var layers = [EN, localeTables[code], customTable];
+    layers.forEach(function (layer) {
+      if (!layer) return;
+      Object.keys(layer).forEach(function (key) {
+        next[key] = layer[key];
+      });
+    });
+    STRINGS = next;
+
+    render();
+  }
+
+  // Works out which language should be showing and switches to it, fetching its
+  // table the first time. Safe to call as often as something changes: a visitor
+  // setting, the site configuration arriving, a sign in.
+  //
+  // wantedLocale guards against a slow response for a language the visitor has
+  // already moved away from arriving late and overwriting their newer choice.
+  function refreshLocale() {
+    var code = resolveLocale();
+    wantedLocale = code;
+
+    if (code === "en" || localeTables[code]) {
+      if (code !== activeLocale) activateLocale(code);
+      return Promise.resolve();
+    }
+
+    return fetchTable(BRIDGE + "/chat-bridge/widget.strings." + encodeURIComponent(code) + ".json").then(
+      function (table) {
+        if (!table) return;
+        localeTables[code] = table;
+        if (wantedLocale === code) activateLocale(code);
+      }
+    );
+  }
+
+  // An integrator can still supply a table of their own, for a language this
+  // widget does not ship or to reword something for their site:
+  //
+  //   <script src="...widget.js" data-site-key="..." data-strings-url="/nl.json">
+  //
+  // It is laid over whichever language is active, so it wins key by key, and
+  // anything it leaves out falls back rather than breaking the interface.
+  function loadCustomStrings() {
+    var url = SCRIPT.getAttribute("data-strings-url");
+    if (!url) return Promise.resolve();
+
+    return fetchTable(new URL(url, window.location.href).href).then(function (table) {
+      if (!table) return;
+      customTable = table;
+      activateLocale(activeLocale);
+    });
   }
 
   /* ---------------------------------------------------------------- state */
@@ -146,7 +317,8 @@
     recording: false,
     recordSeconds: 0,
     uploading: false,
-    prefs: { sound: true, appearance: "system" }
+    ready: false,
+    prefs: { sound: true, appearance: "system", language: "auto" }
   };
 
   try {
@@ -165,7 +337,7 @@
   var PREFS_KEY = "dcb.prefs." + SITE_KEY;
 
   function loadPrefs() {
-    var defaults = { sound: true, appearance: "system" };
+    var defaults = { sound: true, appearance: "system", language: "auto" };
     try {
       var raw = window.localStorage.getItem(PREFS_KEY);
       if (!raw) return defaults;
@@ -174,7 +346,8 @@
         sound: parsed.sound !== false,
         appearance: ["system", "light", "dark"].indexOf(parsed.appearance) !== -1
           ? parsed.appearance
-          : "system"
+          : "system",
+        language: LOCALES.indexOf(parsed.language) !== -1 ? parsed.language : "auto"
       };
     } catch (e) {
       return defaults;
@@ -194,6 +367,34 @@
   // saved preference was silently discarded on load while saving appeared to
   // work perfectly.
   state.prefs = loadPrefs();
+
+  // The site's appearance, remembered from the last visit. Without it the bubble
+  // could only be drawn after a round trip to the forum, so a returning visitor
+  // would watch an empty corner on every page of the host site. With it the
+  // bubble is drawn at once in the right colours and the right corner, and the
+  // copy is refreshed in the background. It holds nothing private: the same
+  // values are handed to any visitor of the site.
+  var SITE_CACHE_KEY = "dcb.site." + SITE_KEY;
+
+  function loadCachedSite() {
+    try {
+      var raw = window.localStorage.getItem(SITE_CACHE_KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || typeof parsed.theme !== "object") return null;
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveCachedSite(site) {
+    try {
+      window.localStorage.setItem(SITE_CACHE_KEY, JSON.stringify(site));
+    } catch (e) {
+      /* nothing depends on this being remembered */
+    }
+  }
 
   function saveToken(token) {
     state.token = token;
@@ -274,7 +475,10 @@
 
     var nonce = String(Math.random()).slice(2) + String(Date.now());
 
-    api("/auth/begin", { state: nonce })
+    // The language goes along so the few words the popup itself shows match the
+    // panel, including when the visitor chose a language their browser is not
+    // set to.
+    api("/auth/begin", { state: nonce, lang: activeLocale })
       .then(function (data) {
         var w = 460;
         var h = 640;
@@ -391,9 +595,8 @@
     return api("/session/me")
       .then(function (data) {
         state.user = data.user;
-        state.site = data.site;
         state.loading = false;
-        applyTheme();
+        setSite(data.site);
         if (!data.user.can_chat) {
           render();
           return;
@@ -406,6 +609,33 @@
         state.error = errorMessage(err.code);
         render();
       });
+  }
+
+  // The site's appearance and switches, asked for before anyone has signed in.
+  //
+  // It used to arrive only with /session/me, which meant an administrator's
+  // colours and corner applied to signed in visitors alone: everyone else, which
+  // on a public website is nearly everyone, saw the default blue bubble in the
+  // default corner. The endpoint needs no token, because what it returns is what
+  // the page shows to any visitor anyway.
+  function loadSiteConfig() {
+    return api("/site/config")
+      .then(function (data) {
+        if (data && data.site) setSite(data.site);
+      })
+      .catch(function () {
+        /* an older forum has no such endpoint, and a forum having a bad moment
+           may not answer. Either way the defaults, or the remembered copy, are
+           a better outcome than no bubble. */
+      });
+  }
+
+  function setSite(site) {
+    if (!site || typeof site !== "object") return;
+    state.site = { theme: site.theme || {}, features: site.features || {} };
+    saveCachedSite(state.site);
+    applyTheme();
+    refreshLocale();
   }
 
   // autoOpen is only true on first load, where dropping the visitor straight
@@ -970,27 +1200,33 @@
     "--p-hover:#f1f5f9;--p-muted:#555;--p-soft:#f4f4f4;--p-sub:#777;",
     "position:fixed;bottom:16px;right:16px;display:flex;flex-direction:column;align-items:flex-end;gap:10px}",
     ".wrap.left{right:auto;left:16px;align-items:flex-start}",
-    ".bubble{width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;background:var(--cb-accent,#0b6ecf);color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;position:relative}",
+    ".bubble{width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;background:var(--cb-launcher-bg,var(--cb-accent,#0b6ecf));color:var(--cb-launcher-fg,#fff);box-shadow:0 6px 20px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;position:relative}",
     ".bubble:hover{filter:brightness(.92)}",
     ".bubble svg{width:26px;height:26px;fill:currentColor}",
     ".badge{position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;border-radius:10px;background:#d4351c;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px}",
     ".panel{width:370px;max-width:calc(100vw - 32px);height:540px;max-height:calc(100vh - 110px);background:var(--p-bg);color:var(--p-fg);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:flex;flex-direction:column;overflow:hidden}",
-    ".hd{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--cb-accent,#0b6ecf);color:#fff;flex:0 0 auto}",
+    ".hd{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--cb-accent,#0b6ecf);color:var(--cb-on-accent,#fff);flex:0 0 auto}",
     ".hd h2{margin:0;font-size:15px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
-    ".hd button{background:transparent;border:none;color:#fff;cursor:pointer;font-size:13px;padding:4px 6px;border-radius:5px}",
-    ".hd button:hover{background:rgba(255,255,255,.18)}",
+    // nowrap and no shrinking, because Back and Sign out are words, and words
+    // are longer in most languages than they are in English. The title is the
+    // part that gives way, with an ellipsis.
+    ".hd button{background:transparent;border:none;color:inherit;cursor:pointer;font-size:13px;padding:4px 6px;border-radius:5px;white-space:nowrap;flex:0 0 auto}",
+    ".hd button:hover{background:var(--cb-on-accent-hover,rgba(255,255,255,.18))}",
     ".body{flex:1 1 auto;overflow-y:auto;padding:12px}",
     ".ft{flex:0 0 auto;border-top:1px solid var(--p-line);padding:8px;display:flex;gap:8px}",
     ".ft textarea{flex:1;resize:none;border:1px solid var(--p-input-line);border-radius:8px;padding:8px 10px;font-size:14px;min-height:38px;max-height:120px;line-height:1.35;color:inherit;background:var(--p-input)}",
     ".ft textarea:focus{outline:2px solid var(--cb-accent,#0b6ecf);outline-offset:-1px}",
-    ".ft button{border:none;background:var(--cb-accent,#0b6ecf);color:#fff;border-radius:8px;padding:0 14px;cursor:pointer;font-size:14px;font-weight:600}",
-    ".ft button:disabled{background:#9bb9d8;cursor:default}",
+    ".ft button{border:none;background:var(--cb-accent,#0b6ecf);color:var(--cb-on-accent,#fff);border-radius:8px;padding:0 14px;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap;flex:0 0 auto;min-height:38px}",
+    // Faded rather than a fixed pale blue, which only looked right against the
+    // default accent.
+    ".ft button:disabled{opacity:.55;cursor:default}",
     ".ft button.mic{background:transparent;color:var(--cb-accent,#0b6ecf);padding:0 8px;display:flex;align-items:center}",
     ".ft button.mic:hover{filter:brightness(.92)}",
     ".ft button.mic svg{width:22px;height:22px;fill:currentColor}",
     ".ft button.ghost{background:transparent;color:var(--p-muted);font-weight:500}",
     ".ft.recording{align-items:center}",
-    ".ft .rec{flex:1;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--p-muted);padding-left:4px}",
+    ".ft .rec{flex:1;min-width:0;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--p-muted);padding-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+    ".ft .rec .dot{flex:0 0 auto}",
     ".ft .rec .dot{width:10px;height:10px;border-radius:50%;background:#d4351c;animation:cbpulse 1.2s ease-in-out infinite}",
     "@keyframes cbpulse{0%,100%{opacity:1}50%{opacity:.25}}",
     ".msg .txt audio{width:100%;max-width:260px;margin-top:4px;display:block}",
@@ -1024,11 +1260,11 @@
     ".settings .opt{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 8px;border-bottom:1px solid var(--p-line);font-size:14px}",
     ".settings .opt:last-child{border-bottom:none}",
     ".settings label.opt{cursor:pointer;justify-content:flex-start;gap:10px}",
-    ".settings select{font:inherit;padding:5px 7px;border:1px solid var(--p-input-line);border-radius:7px;background:var(--p-input);color:inherit}",
+    ".settings select{font:inherit;padding:5px 7px;border:1px solid var(--p-input-line);border-radius:7px;background:var(--p-input);color:inherit;max-width:60%}",
     ".note{padding:16px;text-align:center;color:var(--p-muted);font-size:14px;line-height:1.5}",
     ".note h3{margin:0 0 6px;font-size:15px;color:var(--p-fg)}",
     ".err{background:#fdecea;color:#8b1a10;padding:8px 12px;font-size:13px}",
-    ".btn{border:none;background:var(--cb-accent,#0b6ecf);color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-size:14px;font-weight:600}",
+    ".btn{border:none;background:var(--cb-accent,#0b6ecf);color:var(--cb-on-accent,#fff);border-radius:8px;padding:9px 14px;cursor:pointer;font-size:14px;font-weight:600}",
     ".more{width:100%;border:1px solid var(--p-input-line);background:var(--p-input);border-radius:8px;padding:6px;cursor:pointer;font-size:13px;color:var(--p-muted);margin-bottom:8px}",
     // On a phone a 358px card wastes most of the screen and leaves the composer
     // cramped, so the panel takes the whole viewport instead and the bubble gets
@@ -1084,20 +1320,74 @@
     return null;
   }
 
-  // Applied as a custom property rather than concatenated into the stylesheet.
-  // The server validates the colour as an exact hex value, but setting it as a
-  // property means even a validation slip cannot become CSS injection: the
-  // browser either accepts it as a colour or ignores it.
+  // Applied as custom properties rather than concatenated into the stylesheet,
+  // so a value can never close a rule and start another.
+  //
+  // Each colour is also checked here, although the server already validates it
+  // as an exact hex value. A custom property accepts almost any text, and one
+  // that is not a colour does not fall back to the default: it makes the
+  // declaration that uses it invalid, which for a background means transparent.
+  // A bubble nobody can see is a worse failure than a bubble in the wrong blue,
+  // so anything that is not a hex colour is treated as not set.
   function applyTheme() {
-    var theme = (state.site && state.site.theme) || {};
+    var raw = (state.site && state.site.theme) || {};
+    var theme = {
+      accent: hexOrNull(raw.accent),
+      launcher_bg: hexOrNull(raw.launcher_bg),
+      launcher_icon: hexOrNull(raw.launcher_icon)
+    };
 
-    if (theme.accent) {
-      host.style.setProperty("--cb-accent", theme.accent);
-    } else {
-      host.style.removeProperty("--cb-accent");
-    }
+    setThemeVar("--cb-accent", theme.accent);
+
+    // Text drawn on the accent: the panel title, Send, Sign in. White suits the
+    // default blue and most brand colours, and is unreadable on a pale one, so
+    // it is worked out from the colour rather than assumed.
+    var onAccent = theme.accent ? readableOn(theme.accent) : null;
+    setThemeVar("--cb-on-accent", onAccent);
+    setThemeVar("--cb-on-accent-hover", onAccent === DARK_TEXT ? "rgba(0,0,0,.1)" : null);
+
+    // The launcher button can be coloured apart from the rest. Left unset, its
+    // background follows the accent, and its icon takes whichever of light or
+    // dark reads better against that background.
+    setThemeVar("--cb-launcher-bg", theme.launcher_bg);
+    var launcherBg = theme.launcher_bg || theme.accent;
+    setThemeVar("--cb-launcher-fg", theme.launcher_icon || (launcherBg ? readableOn(launcherBg) : null));
 
     render();
+  }
+
+  function setThemeVar(name, value) {
+    if (value) host.style.setProperty(name, value);
+    else host.style.removeProperty(name);
+  }
+
+  var DARK_TEXT = "#1b1b1b";
+  var HEX_COLOUR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+  function hexOrNull(value) {
+    return typeof value === "string" && HEX_COLOUR.test(value) ? value : null;
+  }
+
+  // Light or dark text for a given background, by relative luminance as WCAG
+  // defines it. The threshold leans towards white on purpose: white on a mid
+  // tone brand colour is what people expect to see, so dark text is used only
+  // where white would be hard to read. Returns null for anything that is not a
+  // hex colour, which leaves the stylesheet's own default in place.
+  function readableOn(hex) {
+    var m = HEX_COLOUR.exec(String(hex || ""));
+    if (!m) return null;
+
+    var h = m[1];
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+
+    var weights = [0.2126, 0.7152, 0.0722];
+    var luminance = 0;
+    for (var i = 0; i < 3; i++) {
+      var c = parseInt(h.substr(i * 2, 2), 16) / 255;
+      c = c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      luminance += c * weights[i];
+    }
+    return luminance > 0.45 ? DARK_TEXT : "#fff";
   }
 
   function themeValue(key, fallback) {
@@ -1188,12 +1478,26 @@
                (state.prefs.appearance === pair[0] ? " selected" : "") + ">" + esc(pair[1]) + "</option>";
       }).join("");
 
+      // Each language is listed under its own name, not translated into the
+      // current one, so someone who landed in a language they cannot read can
+      // still recognise theirs.
+      var langs = ['<option value="auto"' + (state.prefs.language === "auto" ? " selected" : "") +
+                   ">" + esc(t("language_auto")) + "</option>"]
+        .concat(LOCALES.map(function (code) {
+          return '<option value="' + esc(code) + '" lang="' + esc(code) + '"' +
+                 (state.prefs.language === code ? " selected" : "") + ">" +
+                 esc(LOCALE_NAMES[code]) + "</option>";
+        }))
+        .join("");
+
       return (
         '<div class="settings">' +
         '<label class="opt"><input type="checkbox" data-pref="sound"' +
         (state.prefs.sound ? " checked" : "") + "> " + esc(t("sound")) + "</label>" +
         '<div class="opt"><span>' + esc(t("appearance")) + "</span>" +
         '<select data-pref="appearance">' + opts + "</select></div>" +
+        '<div class="opt"><span>' + esc(t("language")) + "</span>" +
+        '<select data-pref="language">' + langs + "</select></div>" +
         (ch
           ? '<label class="opt"><input type="checkbox" data-pref="muted"' +
             (ch.muted ? " checked" : "") + "> " + esc(t("mute_channel")) + "</label>"
@@ -1259,7 +1563,7 @@
         .map(function (m) {
           if (m.deleted) return '<div class="msg"><div class="c"><div class="txt"><em>' + esc(t("deleted")) + "</em></div></div></div>";
           var av = m.user && m.user.avatar_url ? '<img class="av" src="' + esc(m.user.avatar_url) + '" alt="">' : "";
-          var when = m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+          var when = m.created_at ? clockTime(m.created_at) : "";
           var ed = m.edited ? " (" + esc(t("edited")) + ")" : "";
           // m.html has already been sanitized server side by ChatBridge::Sanitizer
           // against a strict allow list, with all URLs made absolute. It is the
@@ -1272,6 +1576,19 @@
         })
         .join("")
     );
+  }
+
+  // In the language the panel is showing, so a visitor who picked French does
+  // not get an English "PM" beside every message. A browser that does not know
+  // the locale falls back to its own default rather than failing.
+  function clockTime(iso) {
+    var date = new Date(iso);
+    var format = { hour: "2-digit", minute: "2-digit" };
+    try {
+      return date.toLocaleTimeString(activeLocale, format);
+    } catch (e) {
+      return date.toLocaleTimeString([], format);
+    }
   }
 
   function mmss(total) {
@@ -1352,6 +1669,11 @@
   }
 
   function render() {
+    // Nothing is drawn until boot has the site's appearance, or has given up
+    // waiting for it. Drawing sooner would show the default bubble and then
+    // recolour it, or worse, move it to the other corner.
+    if (!state.ready) return;
+
     var scroll = null;
     var oldBody = root.querySelector(".body");
     if (oldBody) scroll = oldBody.scrollTop;
@@ -1377,6 +1699,10 @@
       (left ? " left" : "") +
       (state.prefs.appearance === "light" ? " appearance-light" : "") +
       (state.prefs.appearance === "dark" ? " appearance-dark" : "");
+    // Declared so the browser picks the right glyphs. Chinese and Japanese
+    // share code points for characters that are drawn differently, and without
+    // a language the browser guesses from the host page.
+    wrap.setAttribute("lang", activeLocale);
     wrap.innerHTML = (state.open ? renderPanel() : "") + renderBubble();
 
     var newBody = root.querySelector(".body");
@@ -1499,6 +1825,10 @@
       state.prefs.appearance = event.target.value;
       savePrefs();
       render();
+    } else if (pref === "language") {
+      state.prefs.language = LOCALES.indexOf(event.target.value) !== -1 ? event.target.value : "auto";
+      savePrefs();
+      refreshLocale();
     } else if (pref === "muted") {
       var ch = activeChannel();
       if (ch) muteChannel(ch.id, event.target.checked);
@@ -1523,10 +1853,36 @@
 
   /* ---------------------------------------------------------------- boot */
 
+  // How long a first time visitor waits for the site's appearance before the
+  // bubble is drawn with the defaults. Long enough for an ordinary round trip,
+  // short enough that a forum having a bad moment does not hide the chat.
+  var FIRST_PAINT_WAIT_MS = 2500;
+
   function boot() {
     document.body.appendChild(host);
-    loadStrings().then(function () {
-      render();
+
+    var cached = loadCachedSite();
+    if (cached) state.site = { theme: cached.theme || {}, features: cached.features || {} };
+
+    // Started straight away and not waited for. The bubble carries no visible
+    // text, so it does not need its language to be drawn, and the panel is
+    // redrawn the moment the table arrives.
+    refreshLocale();
+    loadCustomStrings();
+
+    var config = loadSiteConfig();
+    var firstPaint = cached
+      ? Promise.resolve()
+      : Promise.race([
+          config,
+          new Promise(function (resolve) {
+            setTimeout(resolve, FIRST_PAINT_WAIT_MS);
+          })
+        ]);
+
+    firstPaint.then(function () {
+      state.ready = true;
+      applyTheme();
       if (state.token) loadSession();
     });
   }
