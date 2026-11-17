@@ -39,7 +39,7 @@ The full reasoning, including what the alternative would have cost, is in `docs/
 ## Requirements
 
 - Discourse with the bundled chat plugin enabled
-- Tested against Discourse `2026.9.0`. See Compatibility below.
+- Tested against Discourse `2026.11.0`. See Compatibility below.
 
 ## Installing
 
@@ -159,7 +159,8 @@ docker exec app rails runner \
 
 | Discourse | Status |
 |---|---|
-| `2026.9.0` | Tested, in production use |
+| `2026.11.0` | Tested, in production use |
+| `2026.9.0` | Tested |
 | `2026.8.0` | Tested |
 | Earlier | Unknown. Run `tests/loadcheck.rb` to find out. |
 

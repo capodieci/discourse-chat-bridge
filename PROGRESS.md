@@ -90,6 +90,50 @@ Decision 0011 said the released plugin must report a missing audio format rather
 
 Verified both ways in a browser: silent when all formats are allowed, and when `ogg` was temporarily removed it named `ogg` specifically. The setting was restored and confirmed byte for byte identical to the backup.
 
+### 5. Languages and button colours [BUILT 2026-11-17, NOT YET DEPLOYED]
+
+Asked for by Rob on 2026-11-17: the widget should follow the browser's language, and each website should be able to choose the colour of the button and of the icon in it.
+
+Committed on `main` locally. **Not pushed and not deployed**: the push and the restart were stopped by the session's permission check, and are waiting for Rob's yes. Until then the forum runs the previous version.
+
+- [x] Nine languages: English, Simplified and Traditional Chinese, Russian, Italian, Spanish, French, Japanese, Korean. English inlined, the rest one JSON file each, fetched on demand.
+- [x] Language chosen in the browser from, in order: the visitor's own setting, `data-lang` on the script tag, a language fixed for the site, the browser's preferred languages.
+- [x] A language row in the visitor's settings panel, each language listed under its own name.
+- [x] The sign in popup's own words follow the same language. The forum's login screen inside it is Discourse's, and already follows the browser here because `set_locale_from_accept_language_header` is on.
+- [x] Button background and button icon colours per site, separate from the accent, validated as hex like the accent.
+- [x] Text on the accent turns dark when the accent is pale.
+- [x] Admin page: colour pickers with a live preview, a language select, a form for adding a website, collapsed cards, a filter for long lists. Saving one site no longer discards edits in another.
+- [x] `/api/site/config`, so appearance reaches signed out visitors. See the gap below.
+- [ ] Push, pull into the container, restart, and verify on the live sites.
+- [ ] Click through the admin page as a real administrator on the live forum.
+
+#### The gap this found
+
+Appearance was only delivered by `/api/session/me`. So the accent and corner from section 2 were only ever applied for signed in visitors, and that is how they were verified at the time. A signed out visitor always saw the default blue bubble in the bottom right. Colouring the button would have been pointless without fixing that first. Decision 0013 records the fix.
+
+#### How it was verified, and what was not
+
+- In headless Chromium, against a local stand in for the forum on two origins: 170 checks on the widget and 53 on the admin page. Every language signed out, the four signed in views in four languages, every rule of precedence, the colours as computed styles, and the first paint timing with a slow forum, a forum without the endpoint, and a remembered copy.
+- `tests/checks.rb`, now 70 checks, and `tests/loadcheck.rb` were run against the new code inside the container, loaded into a throwaway `rails runner` process over the installed plugin, without touching the running forum. Both clean.
+- Not verified: anything on the live forum. The new routes, the popup in another language, and the admin page talking to the real admin endpoints have only been exercised through the model checks and the stand in.
+
+#### Two bugs found by testing
+
+1. **A bad colour made the bubble invisible.** The widget set colours as custom properties, on the stated grounds that the browser would ignore a value that was not a colour. It does not. The declaration using it becomes invalid and the background goes transparent. The server already refuses such values, so this needed a validation slip to happen, but the widget now checks too.
+2. **`loadcheck.rb` replaced `Object#try`.** It defined a top level helper called `try`, which overrides ActiveSupport's for the whole process. Alone it was harmless. Loaded beside `checks.rb` it made chat's own services return nil, which looked for a few minutes like a real incompatibility with Discourse 2026.11.0. Renamed to `attempt`.
+
+#### To deploy
+
+```sh
+cd /home/claude/discourse-chat-bridge && git push origin main
+P=/var/www/discourse/plugins/discourse-chat-bridge
+sudo docker exec app git -C $P -c safe.directory='*' pull -q origin main
+sudo docker exec app rails runner $P/tests/loadcheck.rb | tail -3
+sudo docker exec app sv restart unicorn
+```
+
+No migration, no site setting and no `app.yml` change. The restart is the usual eighteen seconds. To undo: `git revert` the commit, push, and repeat the last three lines.
+
 ### Not in scope
 
 Voice and video calls, one to one and group. Dropped by Rob on 2026-09-19. Decisions 0009 and 0010 record the reasoning and what they would cost, so this can be picked up later without redoing the thinking.
