@@ -90,11 +90,11 @@ Decision 0011 said the released plugin must report a missing audio format rather
 
 Verified both ways in a browser: silent when all formats are allowed, and when `ogg` was temporarily removed it named `ogg` specifically. The setting was restored and confirmed byte for byte identical to the backup.
 
-### 5. Languages and button colours [BUILT 2026-11-17, NOT YET DEPLOYED]
+### 5. Languages and button colours [DEPLOYED 2026-11-18]
 
 Asked for by Rob on 2026-11-17: the widget should follow the browser's language, and each website should be able to choose the colour of the button and of the icon in it.
 
-Committed on `main` locally. **Not pushed and not deployed**: the push and the restart were stopped by the session's permission check, and are waiting for Rob's yes. Until then the forum runs the previous version.
+Built on 2026-11-17. The push and the restart were stopped by the session's permission check, so Rob ran the deploy commands by hand on 2026-11-18. The forum now runs commit `29301bf`.
 
 - [x] Nine languages: English, Simplified and Traditional Chinese, Russian, Italian, Spanish, French, Japanese, Korean. English inlined, the rest one JSON file each, fetched on demand.
 - [x] Language chosen in the browser from, in order: the visitor's own setting, `data-lang` on the script tag, a language fixed for the site, the browser's preferred languages.
@@ -104,7 +104,7 @@ Committed on `main` locally. **Not pushed and not deployed**: the push and the r
 - [x] Text on the accent turns dark when the accent is pale.
 - [x] Admin page: colour pickers with a live preview, a language select, a form for adding a website, collapsed cards, a filter for long lists. Saving one site no longer discards edits in another.
 - [x] `/api/site/config`, so appearance reaches signed out visitors. See the gap below.
-- [ ] Push, pull into the container, restart, and verify on the live sites.
+- [x] Push, pull into the container, restart, and verify on the live sites. See below.
 - [ ] Click through the admin page as a real administrator on the live forum.
 
 #### The gap this found
@@ -115,14 +115,22 @@ Appearance was only delivered by `/api/session/me`. So the accent and corner fro
 
 - In headless Chromium, against a local stand in for the forum on two origins: 170 checks on the widget and 53 on the admin page. Every language signed out, the four signed in views in four languages, every rule of precedence, the colours as computed styles, and the first paint timing with a slow forum, a forum without the endpoint, and a remembered copy.
 - `tests/checks.rb`, now 70 checks, and `tests/loadcheck.rb` were run against the new code inside the container, loaded into a throwaway `rails runner` process over the installed plugin, without touching the running forum. Both clean.
-- Not verified: anything on the live forum. The new routes, the popup in another language, and the admin page talking to the real admin endpoints have only been exercised through the model checks and the stand in.
+- On the live forum after the deploy, 2026-11-18:
+  - `tests/loadcheck.rb` clean and `tests/checks.rb` 70 of 70, inside the container.
+  - `/api/site/config` answers `https://zoobc.com` with its appearance, refuses an unregistered origin with 403, and passes the CORS preflight. All nine `widget.strings.<code>.json` files are served with 54 keys each, and a code that is not shipped is a 404.
+  - Headless Chromium on `https://zoobc.com` with the browser set to ten locales in turn: English, Italian, Simplified Chinese, Hong Kong Chinese, Russian, Mexican Spanish, Canadian French, Japanese, Korean and German. Each opened the panel in the expected language, Hong Kong got Traditional, German fell back to English, and no request failed. Italian and Japanese repeated on `zoobc.foundation` and `zoobc.network`.
+  - Clicking sign in from an Italian and a Japanese browser opened the forum's login in that language, and the panel showed its waiting text translated.
+- Not verified on the live forum:
+  - The popup's own closing words after a completed sign in, in another language. That needs a real account to log in with. The strings are covered by `checks.rb`.
+  - The admin page as a logged in administrator. It has only been driven against the stand in.
+- Seen while testing, and not ours: `zoobc.foundation` throws `Cannot read properties of undefined (reading 'getAttribute')` from `setStep` in its own `assets/js/network-render.js`, on roughly one page load in three. It happens with the widget blocked as well.
 
 #### Two bugs found by testing
 
 1. **A bad colour made the bubble invisible.** The widget set colours as custom properties, on the stated grounds that the browser would ignore a value that was not a colour. It does not. The declaration using it becomes invalid and the background goes transparent. The server already refuses such values, so this needed a validation slip to happen, but the widget now checks too.
 2. **`loadcheck.rb` replaced `Object#try`.** It defined a top level helper called `try`, which overrides ActiveSupport's for the whole process. Alone it was harmless. Loaded beside `checks.rb` it made chat's own services return nil, which looked for a few minutes like a real incompatibility with Discourse 2026.11.0. Renamed to `attempt`.
 
-#### To deploy
+#### How it was deployed
 
 ```sh
 cd /home/claude/discourse-chat-bridge && git push origin main
